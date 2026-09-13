@@ -1,0 +1,4 @@
+# Topic Desk Demo：在 Web profile 中挂载 Host 插件；Client 半侧由 dsh.client 自动发现。
+- insert:
+    - id: topic-desk
+      name: '@dsh-topic-desk/plugin'
