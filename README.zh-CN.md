@@ -76,6 +76,44 @@ pnpm demo:collect -- /tmp/topic-desk.sqlite
 
 Demo 会以 JSON 输出各来源健康状态和部分话题。真实采集受网络与平台反自动化策略影响；单元测试不访问公网，结果可重复。
 
+## Docker Compose
+
+仓库内的多阶段 [`Dockerfile`](./Dockerfile) 会从当前 Topic Desk 源码自行构建、生成插件压缩包，再将其安装到已发布的 DeepSeek Harness Web runtime。不需要预构建的 Topic Desk 镜像、本机 DSH 安装或同级源码仓库；Docker 会在构建时选择匹配的平台架构。最终镜像只使用中性的 Linux 路径；本机依赖、构建产物、数据库、环境文件和 Host profile 均由 [`.dockerignore`](./.dockerignore) 排除，不会进入镜像。
+
+需要安装 Docker Engine 和 Compose v2。在仓库根目录构建并启动：
+
+```bash
+docker compose up --build -d
+docker compose ps
+docker compose logs app
+```
+
+第一条命令会创建本地镜像 `dsh-topic-desk:local`。容器内服务监听所有接口以支持 Docker 端口转发，但 [`docker-compose.yml`](./docker-compose.yml) 默认只发布到宿主机回环地址 `127.0.0.1:3080`。使用 `docker compose logs app` 输出的带认证令牌回环 URL 访问页面。如需修改宿主端口，在启动 Compose 前设置 `DSH_PORT`。
+
+Compose 会从当前 Shell 或仓库根目录的 `.env` 文件读取可选运行参数。`.env` 已被 Git 忽略，也不会进入镜像：
+
+```dotenv
+DEEPSEEK_API_KEY=replace-me
+# DEEPSEEK_BASE_URL=https://your-compatible-endpoint.example
+DSH_PORT=3080
+DSH_TELEMETRY_MODE=DISABLED
+TZ=Asia/Shanghai
+```
+
+话题数据从 `./data` 挂载到容器内的 `/var/lib/topic-desk`，因此实时数据库位于 `./data/topic-desk.sqlite`，重建容器后仍会保留。DSH 工作区使用名为 `dsh-topic-desk_dsh-workspace` 的 Docker 数据卷。为兼容不同 Docker 环境的目录挂载实现，容器 profile 使用 SQLite `delete` journal 模式。WAL 依赖共享内存和文件锁语义，而这些语义在不同挂载文件系统上可能存在差异；回滚日志会牺牲少量并发吞吐，但兼容性更广。复制、替换数据库或使用可写 SQLite 客户端检查数据库前，应先停止服务。
+
+日常命令：
+
+```bash
+docker compose up -d             # 使用已有镜像启动
+docker compose up --build -d     # 源码变化后重新构建
+docker compose logs -f app       # 持续查看服务与采集日志
+docker compose restart app       # 重启应用
+docker compose down              # 停止并移除容器，保留 ./data
+```
+
+除非部署边界另有安全保护，不要把宿主端口绑定改成 `0.0.0.0`：DSH Web profile 提供了能够执行代码的 Agent 工具。`docker compose down -v` 还会删除 DSH 工作区数据卷，但不会删除目录挂载的 `./data`。
+
 ## 架构
 
 ```text

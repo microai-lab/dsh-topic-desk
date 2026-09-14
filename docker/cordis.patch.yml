@@ -1,0 +1,26 @@
+# Container-only overrides. Docker Compose publishes the port on host loopback,
+# while the process must listen on the container interface for port forwarding.
+- id: webserver
+  name: '@deepseek-ai/dsh-host-webserver'
+  inject: [webStartup]
+  config:
+    host: 0.0.0.0
+    port: 3080
+    compression: gzip
+    compressionLevel: 1
+    compressionThresholdBytes: 1024
+
+- id: connection
+  name: '@deepseek-ai/dsh-client-connection'
+  inject: [webRuntime]
+  config:
+    trustedHosts:
+      - 127.0.0.1
+      - localhost
+
+- id: topic-desk
+  name: '@dsh-topic-desk/plugin'
+  config:
+    databasePath: /var/lib/topic-desk/topic-desk.sqlite
+    journalMode: delete
+    proxyUrl: ''

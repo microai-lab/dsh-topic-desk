@@ -76,6 +76,44 @@ pnpm demo:collect -- /tmp/topic-desk.sqlite
 
 The demo prints source health and a sample of collected topics as JSON. Live collection depends on network conditions and platform anti-automation policies. Unit tests never access the public internet and are deterministic.
 
+## Docker Compose
+
+The included multi-stage [`Dockerfile`](./Dockerfile) builds the current Topic Desk checkout from source, packs it, and installs the resulting archive into the published DeepSeek Harness Web runtime. No prebuilt Topic Desk image, host DSH installation, or sibling source checkout is required. Docker selects the matching base-image architecture during the build. The final image uses neutral Linux paths only; local dependencies, build output, databases, environment files, and host profiles are excluded by [`.dockerignore`](./.dockerignore).
+
+Docker Engine with Compose v2 is required. Build and start the service from the repository root:
+
+```bash
+docker compose up --build -d
+docker compose ps
+docker compose logs app
+```
+
+The first command creates the local `dsh-topic-desk:local` image. The service listens inside the container on all interfaces so Docker port forwarding works, but [`docker-compose.yml`](./docker-compose.yml) publishes it only on host loopback at `127.0.0.1:3080` by default. Open the authenticated loopback URL printed by `docker compose logs app`. To use another host port, set `DSH_PORT` before starting Compose.
+
+Compose reads optional runtime values from the shell or the repository-root `.env` file. `.env` is ignored by Git and excluded from the image:
+
+```dotenv
+DEEPSEEK_API_KEY=replace-me
+# DEEPSEEK_BASE_URL=https://your-compatible-endpoint.example
+DSH_PORT=3080
+DSH_TELEMETRY_MODE=DISABLED
+TZ=Asia/Shanghai
+```
+
+Topic data is bind-mounted from `./data` to `/var/lib/topic-desk`; the live database is therefore available at `./data/topic-desk.sqlite` and survives container recreation. The DSH workspace uses the `dsh-topic-desk_dsh-workspace` named volume. For portable behavior across Docker bind-mount implementations, the container profile uses SQLite `delete` journal mode. WAL depends on shared-memory and file-locking semantics that can vary between bind-mounted filesystems, while the rollback journal trades some concurrent throughput for broader compatibility. Stop the service before copying, replacing, or inspecting the database with a write-capable SQLite client.
+
+Routine operations:
+
+```bash
+docker compose up -d             # start an existing build
+docker compose up --build -d     # rebuild after source changes
+docker compose logs -f app       # follow service and collection logs
+docker compose restart app       # restart the application
+docker compose down              # stop and remove the container; keep ./data
+```
+
+Do not change the published port binding to `0.0.0.0` without a separately secured deployment boundary: the DSH Web profile exposes agent tools capable of executing code. `docker compose down -v` also removes the DSH workspace named volume, but never removes the bind-mounted `./data` directory.
+
 ## Architecture
 
 ```text

@@ -1,0 +1,27 @@
+name: dsh-topic-desk
+
+services:
+  app:
+    image: dsh-topic-desk:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NODE_VERSION: "24.19.0"
+        PNPM_VERSION: "11.19.0"
+        DSH_VERSION: "0.1.5-rc.2"
+    init: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${DSH_PORT:-3080}:3080"
+    environment:
+      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY:-}"
+      DEEPSEEK_BASE_URL: "${DEEPSEEK_BASE_URL:-}"
+      DSH_TELEMETRY_MODE: "${DSH_TELEMETRY_MODE:-DISABLED}"
+      TZ: "${TZ:-Asia/Shanghai}"
+    volumes:
+      - ./data:/var/lib/topic-desk
+      - dsh-workspace:/workspace
+
+volumes:
+  dsh-workspace:
