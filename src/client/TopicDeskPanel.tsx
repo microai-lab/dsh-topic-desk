@@ -224,7 +224,7 @@ export function TopicDeskPanel({ list, refresh, translate, t }: PanelProps) {
               <div className={styles.topic}>
                 <div className={styles.topicMeta}>
                   <span data-source={topic.platformCode}>{topic.platformName}</span>
-                  <span className={styles.categoryBadge}>{categoryLabel(topic.category, t)}</span>
+                  <span className={styles.categoryBadge} data-category={topic.category}>{categoryLabel(topic.category, t)}</span>
                   <span>{t('firstSeen')} {formatTime(topic.firstSeenAt)}</span>
                 </div>
                 <a className={styles.topicTitle} href={topic.url} target="_blank" rel="noopener noreferrer" title={t('open')}>{topic.title}</a>
