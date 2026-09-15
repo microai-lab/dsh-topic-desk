@@ -101,7 +101,11 @@ TZ=Asia/Shanghai
 
 DeepSeek API Key 和自定义接口地址请在 Harness 的**设置 → 模型**页面保存。Harness 会把凭据写入 `./data/.credentials.yaml`、把模型设置写入 `./data/settings.yaml`，并监视这两个文件；保存或更换密钥后，下一次翻译请求立即使用新值，不需要重启容器。环境变量属于进程启动快照，因此 Compose 不再通过环境变量注入模型连接信息。
 
-话题数据和 Harness 管理的模型配置都从 `./data` 挂载到容器内的 `/var/lib/topic-desk`：实时数据库位于 `./data/topic-desk.sqlite`，凭据和设置分别位于 `./data/.credentials.yaml` 与 `./data/settings.yaml`，三者在重建容器后都会保留。DSH 工作区使用名为 `dsh-topic-desk_dsh-workspace` 的 Docker 数据卷。为兼容不同 Docker 环境的目录挂载实现，容器 profile 使用 SQLite `delete` journal 模式。WAL 依赖共享内存和文件锁语义，而这些语义在不同挂载文件系统上可能存在差异；回滚日志会牺牲少量并发吞吐，但兼容性更广。复制、替换数据库或使用可写 SQLite 客户端检查数据库前，应先停止服务。
+话题数据和 Harness 管理的模型配置都从 `./data` 挂载到容器内的 `/var/lib/topic-desk`：实时数据库位于 `./data/topic-desk.sqlite`，凭据和设置分别位于 `./data/.credentials.yaml` 与 `./data/settings.yaml`。仓库会忽略整个 `./data` 目录、所有 `.env` 变体以及 Harness 凭据文件名，模型 Key 和运行数据不会进入 Git。
+
+Harness 运行数据分别使用 Docker named volume 持久化：`dsh-sessions` 保存会话日志，`dsh-storages` 保存工作区注册等内部状态，`dsh-attachments` 保存上传文件，`dsh-agent-presets` 保存用户自定义 Agent 预设，`dsh-workspace` 保存工作区文件。Compose 会在这些名称前加上项目名，例如 `dsh-topic-desk_dsh-sessions`。镜像管理的 profile 和插件依赖仍保留在镜像中，因此重新构建可以应用 profile 与插件更新，同时不会覆盖用户持久化数据。
+
+为兼容不同 Docker 环境的目录挂载实现，容器 profile 使用 SQLite `delete` journal 模式。WAL 依赖共享内存和文件锁语义，而这些语义在不同挂载文件系统上可能存在差异；回滚日志会牺牲少量并发吞吐，但兼容性更广。复制、替换数据库或使用可写 SQLite 客户端检查数据库前，应先停止服务。
 
 日常命令：
 
@@ -113,7 +117,7 @@ docker compose restart app       # 重启应用
 docker compose down              # 停止并移除容器，保留 ./data
 ```
 
-除非部署边界另有安全保护，不要把宿主端口绑定改成 `0.0.0.0`：DSH Web profile 提供了能够执行代码的 Agent 工具。`docker compose down -v` 还会删除 DSH 工作区数据卷，但不会删除目录挂载的 `./data`。
+除非部署边界另有安全保护，不要把宿主端口绑定改成 `0.0.0.0`：DSH Web profile 提供了能够执行代码的 Agent 工具。`docker compose down -v` 会删除全部 Harness named volume，包括会话、附件、内部状态、预设和工作区文件，但不会删除目录挂载的 `./data`。日常维护请使用普通的 `docker compose down`。
 
 ## 架构
 

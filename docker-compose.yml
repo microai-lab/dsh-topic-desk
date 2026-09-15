@@ -19,7 +19,15 @@ services:
       TZ: "${TZ:-Asia/Shanghai}"
     volumes:
       - ./data:/var/lib/topic-desk
+      - dsh-sessions:/opt/dsh-home/sessions
+      - dsh-storages:/opt/dsh-home/storages
+      - dsh-attachments:/opt/dsh-home/attachments
+      - dsh-agent-presets:/opt/dsh-home/.agent-presets
       - dsh-workspace:/workspace
 
 volumes:
+  dsh-sessions:
+  dsh-storages:
+  dsh-attachments:
+  dsh-agent-presets:
   dsh-workspace:

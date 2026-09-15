@@ -39,7 +39,13 @@ RUN dsh --profile web --dump-default-config >/dev/null \
 
 COPY docker/cordis.patch.yml /opt/dsh-home/profiles/web/cordis.patch.yml
 
-RUN mkdir -p /var/lib/topic-desk /workspace \
+RUN mkdir -p \
+      /var/lib/topic-desk \
+      /workspace \
+      /opt/dsh-home/sessions \
+      /opt/dsh-home/storages \
+      /opt/dsh-home/attachments \
+      /opt/dsh-home/.agent-presets \
     && chown -R node:node /opt/dsh-home /var/lib/topic-desk /workspace
 
 USER node

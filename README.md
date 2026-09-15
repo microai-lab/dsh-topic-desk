@@ -101,7 +101,11 @@ TZ=Asia/Shanghai
 
 Configure the DeepSeek API key and any custom endpoint on Harness's **Settings → Models** page. Harness stores credentials in `./data/.credentials.yaml` and model settings in `./data/settings.yaml`; both managed files are watched, so saving or rotating a key takes effect on the next translation without restarting the container. Environment variables are process-start snapshots and are intentionally not used for model connection details in Compose.
 
-Topic data and Harness-managed model configuration are bind-mounted from `./data` to `/var/lib/topic-desk`. The live database is `./data/topic-desk.sqlite`; credentials and settings use `./data/.credentials.yaml` and `./data/settings.yaml`. All three survive container recreation. The DSH workspace uses the `dsh-topic-desk_dsh-workspace` named volume. For portable behavior across Docker bind-mount implementations, the container profile uses SQLite `delete` journal mode. WAL depends on shared-memory and file-locking semantics that can vary between bind-mounted filesystems, while the rollback journal trades some concurrent throughput for broader compatibility. Stop the service before copying, replacing, or inspecting the database with a write-capable SQLite client.
+Topic data and Harness-managed model configuration are bind-mounted from `./data` to `/var/lib/topic-desk`. The live database is `./data/topic-desk.sqlite`; credentials and settings use `./data/.credentials.yaml` and `./data/settings.yaml`. The repository ignores the complete `./data` directory, all `.env` variants, and Harness credential filenames, so model keys and runtime data stay out of Git.
+
+Harness runtime data is persisted in separate Docker named volumes: `dsh-sessions` for conversation logs, `dsh-storages` for workspace registration and other durable state, `dsh-attachments` for uploaded files, `dsh-agent-presets` for user-defined agent presets, and `dsh-workspace` for workspace files. Compose prefixes these names with the project name, for example `dsh-topic-desk_dsh-sessions`. Image-owned profiles and plugin dependencies remain in the image so rebuilding applies profile and plugin updates without overwriting persistent user data.
+
+For portable behavior across Docker bind-mount implementations, the container profile uses SQLite `delete` journal mode. WAL depends on shared-memory and file-locking semantics that can vary between bind-mounted filesystems, while the rollback journal trades some concurrent throughput for broader compatibility. Stop the service before copying, replacing, or inspecting the database with a write-capable SQLite client.
 
 Routine operations:
 
@@ -113,7 +117,7 @@ docker compose restart app       # restart the application
 docker compose down              # stop and remove the container; keep ./data
 ```
 
-Do not change the published port binding to `0.0.0.0` without a separately secured deployment boundary: the DSH Web profile exposes agent tools capable of executing code. `docker compose down -v` also removes the DSH workspace named volume, but never removes the bind-mounted `./data` directory.
+Do not change the published port binding to `0.0.0.0` without a separately secured deployment boundary: the DSH Web profile exposes agent tools capable of executing code. `docker compose down -v` removes all Harness named volumes, including sessions, attachments, internal state, presets, and workspace files; it never removes the bind-mounted `./data` directory. Use plain `docker compose down` during routine maintenance.
 
 ## Architecture
 

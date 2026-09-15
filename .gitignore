@@ -16,6 +16,10 @@ coverage/
 *.sqlite
 *.sqlite-*
 
+# Harness secrets (keep ignored even if stored outside ./data)
+**/.credentials.yaml
+**/.credentials.*.yaml
+
 # Package archives
 *.tgz
 
