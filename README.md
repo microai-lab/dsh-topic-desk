@@ -39,6 +39,7 @@ Sources use public RSS, Atom, JSON, web endpoints, and selected public Orz News 
 - Processes up to 30 items per source per collection run by default.
 - Stores `heat` when a source provides a reliable popularity value; otherwise stores `NULL`.
 - Opens the original article in a new browser tab when its title or arrow is clicked.
+- Offers on-demand Simplified Chinese translation for English titles through the Harness's currently selected default model.
 - Does not fetch article bodies or write content into the chat composer.
 - Supports All, Domestic, and International regions plus General, Tech & AI, Finance & Markets, and Developer categories.
 - Provides 20-item pagination, source filtering, title search, ranking/update-time sorting, real ranking trends, position changes, and consecutive appearance counts.
@@ -90,17 +91,17 @@ docker compose logs app
 
 The first command creates the local `dsh-topic-desk:local` image. The service listens inside the container on all interfaces so Docker port forwarding works, but [`docker-compose.yml`](./docker-compose.yml) publishes it only on host loopback at `127.0.0.1:3080` by default. Open the authenticated loopback URL printed by `docker compose logs app`. To use another host port, set `DSH_PORT` before starting Compose.
 
-Compose reads optional runtime values from the shell or the repository-root `.env` file. `.env` is ignored by Git and excluded from the image:
+Compose reads optional non-secret runtime values from the shell or the repository-root `.env` file. `.env` is ignored by Git and excluded from the image:
 
 ```dotenv
-DEEPSEEK_API_KEY=replace-me
-# DEEPSEEK_BASE_URL=https://your-compatible-endpoint.example
 DSH_PORT=3080
 DSH_TELEMETRY_MODE=DISABLED
 TZ=Asia/Shanghai
 ```
 
-Topic data is bind-mounted from `./data` to `/var/lib/topic-desk`; the live database is therefore available at `./data/topic-desk.sqlite` and survives container recreation. The DSH workspace uses the `dsh-topic-desk_dsh-workspace` named volume. For portable behavior across Docker bind-mount implementations, the container profile uses SQLite `delete` journal mode. WAL depends on shared-memory and file-locking semantics that can vary between bind-mounted filesystems, while the rollback journal trades some concurrent throughput for broader compatibility. Stop the service before copying, replacing, or inspecting the database with a write-capable SQLite client.
+Configure the DeepSeek API key and any custom endpoint on Harness's **Settings → Models** page. Harness stores credentials in `./data/.credentials.yaml` and model settings in `./data/settings.yaml`; both managed files are watched, so saving or rotating a key takes effect on the next translation without restarting the container. Environment variables are process-start snapshots and are intentionally not used for model connection details in Compose.
+
+Topic data and Harness-managed model configuration are bind-mounted from `./data` to `/var/lib/topic-desk`. The live database is `./data/topic-desk.sqlite`; credentials and settings use `./data/.credentials.yaml` and `./data/settings.yaml`. All three survive container recreation. The DSH workspace uses the `dsh-topic-desk_dsh-workspace` named volume. For portable behavior across Docker bind-mount implementations, the container profile uses SQLite `delete` journal mode. WAL depends on shared-memory and file-locking semantics that can vary between bind-mounted filesystems, while the rollback journal trades some concurrent throughput for broader compatibility. Stop the service before copying, replacing, or inspecting the database with a write-capable SQLite client.
 
 Routine operations:
 

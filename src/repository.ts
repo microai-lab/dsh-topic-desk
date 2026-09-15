@@ -219,6 +219,16 @@ export class TopicRepository {
     }
   }
 
+  /** 读取仍属于当前成功榜单的一条标题，供 Host 侧按需翻译使用。 */
+  topicTitle(topicId: number): string | undefined {
+    const row = this.database.handle.prepare(`
+      SELECT t.title FROM topic t JOIN platform p ON p.id = t.platform_id
+      WHERE t.id = ? AND t.deleted = 0 AND p.deleted = 0
+        AND p.last_success_run_id = t.last_collection_run_id
+    `).get(topicId) as { title: string } | undefined
+    return row?.title
+  }
+
   private toView(row: TopicSqlRow): TopicView {
     const observations = this.database.handle.prepare(`
       SELECT rank FROM topic_observation WHERE topic_id = ? AND deleted = 0

@@ -15,8 +15,6 @@ services:
     ports:
       - "127.0.0.1:${DSH_PORT:-3080}:3080"
     environment:
-      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY:-}"
-      DEEPSEEK_BASE_URL: "${DEEPSEEK_BASE_URL:-}"
       DSH_TELEMETRY_MODE: "${DSH_TELEMETRY_MODE:-DISABLED}"
       TZ: "${TZ:-Asia/Shanghai}"
     volumes:

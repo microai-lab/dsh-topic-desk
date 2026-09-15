@@ -4,7 +4,8 @@ import { CollectionCoordinator } from './coordinator.ts'
 import { platformDefinitions, type Config as TopicDeskConfig } from './config.ts'
 import { TopicDatabase } from './database.ts'
 import { TopicRepository } from './repository.ts'
-import type { RefreshResult, TopicPage, TopicQuery } from './types.ts'
+import { TopicTranslator, translateWithHarness } from './translator.ts'
+import type { RefreshResult, TopicPage, TopicQuery, TranslationRequest, TranslationResult } from './types.ts'
 
 export { Config } from './config.ts'
 export type * from './types.ts'
@@ -12,11 +13,13 @@ export { CollectionCoordinator } from './coordinator.ts'
 export { TopicDatabase } from './database.ts'
 export { identifyTopic, normalizeUrl } from './identity.ts'
 export { TopicRepository } from './repository.ts'
+export { isEnglishTitle, TopicTranslator, translateWithHarness } from './translator.ts'
 export { fetchRss, parseRss } from './rss.ts'
 export { fetchSource, parseArxivHtml, parseHtmlLinks, parseJson, parseXiaohongshuHtml } from './source-fetcher.ts'
 export { platformCatalog } from './platforms.ts'
 
 export const name = 'topic-desk'
+export const inject = ['llm', 'agentDefaultModel']
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -31,6 +34,7 @@ export class TopicDeskGateway extends TypertRemoteService {
     ctx: Context,
     private readonly repository: TopicRepository,
     private readonly coordinator: CollectionCoordinator,
+    private readonly translator: TopicTranslator,
   ) {
     super(ctx, 'topicDesk')
   }
@@ -45,6 +49,12 @@ export class TopicDeskGateway extends TypertRemoteService {
   @Remote('refresh')
   async refresh(): Promise<RefreshResult> {
     return await this.coordinator.refresh()
+  }
+
+  /** 使用 Harness 当前默认模型按需翻译一条英文标题。 */
+  @Remote('translate')
+  async translate(request: TranslationRequest): Promise<TranslationResult> {
+    return await this.translator.translate(request)
   }
 }
 
@@ -70,8 +80,9 @@ export function apply(ctx: Context, config: TopicDeskConfig): void {
   const repository = new TopicRepository(database, config.historyEnabled)
   repository.ensurePlatforms(platformDefinitions(config))
   const coordinator = new CollectionCoordinator(repository, config)
+  const translator = new TopicTranslator(repository, title => translateWithHarness(ctx, title))
   try {
-    new TopicDeskGateway(ctx, repository, coordinator)
+    new TopicDeskGateway(ctx, repository, coordinator, translator)
     ctx.effect(() => {
       coordinator.start()
       return async () => {

@@ -24,3 +24,17 @@
     databasePath: /var/lib/topic-desk/topic-desk.sqlite
     journalMode: delete
     proxyUrl: ''
+
+# Keep Harness-owned settings and credentials beside the SQLite database.
+# The credentials provider watches this file, so the next model call uses a
+# saved or rotated key immediately without restarting the container.
+- id: settings
+  name: '@deepseek-ai/dsh-settings-file'
+  config:
+    path: /var/lib/topic-desk/settings.yaml
+
+- id: credentials
+  name: '@deepseek-ai/dsh-credentials-local'
+  config:
+    path: /var/lib/topic-desk/.credentials.yaml
+    watch: true

@@ -39,6 +39,7 @@ Client 不直接访问来源网站或 SQLite，只通过生成的 DSH Remote API
 - 默认每个来源每轮最多处理 30 条内容。
 - 来源提供可靠热度时保存 `heat`，否则保存为 `NULL`。
 - 点击标题或箭头会在浏览器新标签页打开原文。
+- 英文标题可按需点击“译”，通过 Harness 当前选中的默认模型生成简体中文译文。
 - 插件不会抓取文章正文，也不会自动向聊天框写入内容。
 - 平台支持全部、国内、国外分组；话题支持综合、科技与 AI、财经市场、开发者分类。
 - 页面采用每页 20 条的分页，并支持来源筛选、标题搜索、排名/更新时间排序、真实排名趋势、排名升降和连续上榜轮数。
@@ -90,17 +91,17 @@ docker compose logs app
 
 第一条命令会创建本地镜像 `dsh-topic-desk:local`。容器内服务监听所有接口以支持 Docker 端口转发，但 [`docker-compose.yml`](./docker-compose.yml) 默认只发布到宿主机回环地址 `127.0.0.1:3080`。使用 `docker compose logs app` 输出的带认证令牌回环 URL 访问页面。如需修改宿主端口，在启动 Compose 前设置 `DSH_PORT`。
 
-Compose 会从当前 Shell 或仓库根目录的 `.env` 文件读取可选运行参数。`.env` 已被 Git 忽略，也不会进入镜像：
+Compose 会从当前 Shell 或仓库根目录的 `.env` 文件读取可选的非敏感运行参数。`.env` 已被 Git 忽略，也不会进入镜像：
 
 ```dotenv
-DEEPSEEK_API_KEY=replace-me
-# DEEPSEEK_BASE_URL=https://your-compatible-endpoint.example
 DSH_PORT=3080
 DSH_TELEMETRY_MODE=DISABLED
 TZ=Asia/Shanghai
 ```
 
-话题数据从 `./data` 挂载到容器内的 `/var/lib/topic-desk`，因此实时数据库位于 `./data/topic-desk.sqlite`，重建容器后仍会保留。DSH 工作区使用名为 `dsh-topic-desk_dsh-workspace` 的 Docker 数据卷。为兼容不同 Docker 环境的目录挂载实现，容器 profile 使用 SQLite `delete` journal 模式。WAL 依赖共享内存和文件锁语义，而这些语义在不同挂载文件系统上可能存在差异；回滚日志会牺牲少量并发吞吐，但兼容性更广。复制、替换数据库或使用可写 SQLite 客户端检查数据库前，应先停止服务。
+DeepSeek API Key 和自定义接口地址请在 Harness 的**设置 → 模型**页面保存。Harness 会把凭据写入 `./data/.credentials.yaml`、把模型设置写入 `./data/settings.yaml`，并监视这两个文件；保存或更换密钥后，下一次翻译请求立即使用新值，不需要重启容器。环境变量属于进程启动快照，因此 Compose 不再通过环境变量注入模型连接信息。
+
+话题数据和 Harness 管理的模型配置都从 `./data` 挂载到容器内的 `/var/lib/topic-desk`：实时数据库位于 `./data/topic-desk.sqlite`，凭据和设置分别位于 `./data/.credentials.yaml` 与 `./data/settings.yaml`，三者在重建容器后都会保留。DSH 工作区使用名为 `dsh-topic-desk_dsh-workspace` 的 Docker 数据卷。为兼容不同 Docker 环境的目录挂载实现，容器 profile 使用 SQLite `delete` journal 模式。WAL 依赖共享内存和文件锁语义，而这些语义在不同挂载文件系统上可能存在差异；回滚日志会牺牲少量并发吞吐，但兼容性更广。复制、替换数据库或使用可写 SQLite 客户端检查数据库前，应先停止服务。
 
 日常命令：
 

@@ -23,6 +23,11 @@ export type IdentityKind = 'stable_id' | 'url' | 'title'
 /** 采集触发原因。 */
 export type TriggerKind = 'startup' | 'schedule' | 'manual'
 
+/** 仅为含拉丁字母且不含中日韩文字的标题提供翻译入口。 */
+export function isEnglishTitle(title: string): boolean {
+  return /[A-Za-z]/.test(title) && !/[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/u.test(title)
+}
+
 /** 标准化但尚未持久化的热点元数据。 */
 export interface CollectedTopic {
   readonly platformCode: PlatformCode
@@ -113,4 +118,15 @@ export interface TopicPage {
 export interface RefreshResult {
   readonly accepted: boolean
   readonly message: string
+}
+
+/** 按需翻译请求；Host 会根据 ID 从本地数据库重新读取标题。 */
+export interface TranslationRequest {
+  readonly topicId: number
+}
+
+/** 一条由 Harness 当前默认模型生成的标题译文。 */
+export interface TranslationResult {
+  readonly topicId: number
+  readonly translation: string
 }

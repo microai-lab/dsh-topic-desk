@@ -1,6 +1,7 @@
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { PlatformCode, RefreshResult, SourceRegion, TopicCategory, TopicPage, TopicQuery, TopicView } from '../types.ts'
+import { isEnglishTitle } from '../types.ts'
+import type { PlatformCode, RefreshResult, SourceRegion, TopicCategory, TopicPage, TopicQuery, TopicView, TranslationRequest, TranslationResult } from '../types.ts'
 import styles from './topic-desk.module.css'
 
 const PAGE_SIZE = 20
@@ -8,6 +9,7 @@ const PAGE_SIZE = 20
 export interface TopicDeskActions {
   readonly list: (query: TopicQuery) => Promise<TopicPage>
   readonly refresh: () => Promise<RefreshResult>
+  readonly translate: (request: TranslationRequest) => Promise<TranslationResult>
 }
 
 type PanelProps = TopicDeskActions & PropsLocale<'topic-desk'>
@@ -50,7 +52,7 @@ function categoryLabel(category: TopicCategory, t: PanelProps['t']): string {
 }
 
 /** Topic Desk 的全局主面板；所有业务数据仅通过 Host Remote 从 SQLite 读取。 */
-export function TopicDeskPanel({ list, refresh, t }: PanelProps) {
+export function TopicDeskPanel({ list, refresh, translate, t }: PanelProps) {
   const [region, setRegion] = useState<'all' | SourceRegion>('all')
   const [category, setCategory] = useState<'all' | TopicCategory>('all')
   const [source, setSource] = useState<PlatformCode | undefined>()
@@ -61,6 +63,7 @@ export function TopicDeskPanel({ list, refresh, t }: PanelProps) {
   const [error, setError] = useState<string>()
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [translations, setTranslations] = useState<Record<number, { text?: string; error?: string; loading?: boolean }>>({})
   const request = useRef(0)
 
   const load = useCallback(async () => {
@@ -103,6 +106,17 @@ export function TopicDeskPanel({ list, refresh, t }: PanelProps) {
       setError(reason instanceof Error ? reason.message : String(reason))
     } finally {
       setRefreshing(false)
+    }
+  }
+
+  const translateTopic = async (topic: TopicView): Promise<void> => {
+    setTranslations(current => ({ ...current, [topic.id]: { loading: true } }))
+    try {
+      const result = await translate({ topicId: topic.id })
+      setTranslations(current => ({ ...current, [topic.id]: { text: result.translation } }))
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : String(reason)
+      setTranslations(current => ({ ...current, [topic.id]: { error: message } }))
     }
   }
 
@@ -203,8 +217,9 @@ export function TopicDeskPanel({ list, refresh, t }: PanelProps) {
       ) : null}
       {page !== undefined && page.topics.length > 0 ? (
         <ol className={styles.list}>
-          {page.topics.map(topic => (
-            <li key={`${topic.platformCode}:${topic.id}`} className={styles.card}>
+          {page.topics.map(topic => {
+            const translation = translations[topic.id]
+            return <li key={`${topic.platformCode}:${topic.id}`} className={styles.card}>
               <div className={styles.rank}><span>{t('rank')}</span><strong>{String(topic.rank).padStart(2, '0')}</strong></div>
               <div className={styles.topic}>
                 <div className={styles.topicMeta}>
@@ -212,7 +227,23 @@ export function TopicDeskPanel({ list, refresh, t }: PanelProps) {
                   <span className={styles.categoryBadge}>{categoryLabel(topic.category, t)}</span>
                   <span>{t('firstSeen')} {formatTime(topic.firstSeenAt)}</span>
                 </div>
-                <a href={topic.url} target="_blank" rel="noopener noreferrer" title={t('open')}>{topic.title}</a>
+                <a className={styles.topicTitle} href={topic.url} target="_blank" rel="noopener noreferrer" title={t('open')}>{topic.title}</a>
+                {isEnglishTitle(topic.title) && (
+                  <div className={styles.translationRow}>
+                    <button
+                      className={styles.translate}
+                      type="button"
+                      disabled={translation?.loading || translation?.text !== undefined}
+                      aria-label={`${t('translate')}：${topic.title}`}
+                      onClick={() => { void translateTopic(topic) }}
+                    >
+                      {t('translate')}
+                    </button>
+                    {translation?.loading && <span>：{t('translating')}</span>}
+                    {translation?.text !== undefined && <span lang="zh-CN">：{translation.text}</span>}
+                    {translation?.error !== undefined && <span className={styles.translationError}>：{translation.error}</span>}
+                  </div>
+                )}
                 <div className={styles.metrics}>
                   <span className={topic.rankDelta !== null && topic.rankDelta > 0 ? styles.rising : undefined}>{deltaLabel(topic, t)}</span>
                   <span>{t('runs')} {topic.consecutiveRuns} {t('times')}</span>
@@ -227,7 +258,7 @@ export function TopicDeskPanel({ list, refresh, t }: PanelProps) {
                 <ArrowIcon />
               </a>
             </li>
-          ))}
+          })}
         </ol>
       ) : null}
       {page !== undefined && page.total > PAGE_SIZE ? (

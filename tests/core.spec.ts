@@ -2,13 +2,14 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Config, defaultSourceConfigs, platformDefinitions } from '../src/config.ts'
 import { CollectionCoordinator } from '../src/coordinator.ts'
 import { TopicDatabase } from '../src/database.ts'
 import { identifyTopic } from '../src/identity.ts'
 import { platformCatalog } from '../src/platforms.ts'
 import { TopicRepository, topicFixture } from '../src/repository.ts'
+import { isEnglishTitle, TopicTranslator } from '../src/translator.ts'
 import { parseRss } from '../src/rss.ts'
 import { parseArxivHtml, parseHtmlLinks, parseJson, parseXiaohongshuHtml } from '../src/source-fetcher.ts'
 
@@ -251,6 +252,60 @@ describe('SQLite 仓储', () => {
         expect.objectContaining({ code: 'qbitai', region: 'domestic', category: 'technology' }),
         expect.objectContaining({ code: 'hacker-news', region: 'international', category: 'developer' }),
       ]))
+    } finally {
+      database.close()
+    }
+  })
+})
+
+describe('按需翻译', () => {
+  it('只识别不含中日韩文字的英文标题', () => {
+    expect(isEnglishTitle('A practical guide to small language models')).toBe(true)
+    expect(isEnglishTitle('DeepSeek V4：模型更新')).toBe(false)
+    expect(isEnglishTitle('用于创作的话题')).toBe(false)
+    expect(isEnglishTitle('2026 / 09 / 15')).toBe(false)
+  })
+
+  it('从当前榜单读取标题，并合并同一话题的并发模型请求', async () => {
+    const config = Config({})
+    const database = new TopicDatabase(':memory:', 'delete')
+    try {
+      const repository = new TopicRepository(database, true)
+      repository.ensurePlatforms(platformDefinitions(config))
+      const run = repository.createRun('hacker-news', 'manual', 'running')
+      repository.commitFeed('hacker-news', run, {
+        topics: [topicFixture({ platformCode: 'hacker-news', stableId: 'english', title: 'An English title' })],
+        fetchedCount: 1,
+        invalidCount: 0,
+      })
+      const topicId = repository.list({ source: 'hacker-news' }).topics[0]!.id
+      let release!: (value: string) => void
+      const generate = vi.fn(() => new Promise<string>(resolve => { release = resolve }))
+      const translator = new TopicTranslator(repository, generate)
+      const first = translator.translate({ topicId })
+      const second = translator.translate({ topicId })
+      expect(first).toBe(second)
+      expect(generate).toHaveBeenCalledOnce()
+      expect(generate).toHaveBeenCalledWith('An English title')
+      release('一个英文标题')
+      await expect(first).resolves.toEqual({ topicId, translation: '一个英文标题' })
+      expect(() => translator.translate({ topicId: 0 })).toThrow('topicId 必须是正整数')
+      expect(() => translator.translate({ topicId: topicId + 999 })).toThrow('话题不存在或已失效')
+    } finally {
+      database.close()
+    }
+  })
+
+  it('拒绝由 Remote 伪造的中文标题翻译请求', () => {
+    const database = new TopicDatabase(':memory:', 'delete')
+    try {
+      const repository = new TopicRepository(database, true)
+      repository.ensurePlatforms(platformDefinitions(Config({})))
+      const run = repository.createRun('qbitai', 'manual', 'running')
+      repository.commitFeed('qbitai', run, { topics: [topicFixture()], fetchedCount: 1, invalidCount: 0 })
+      const topicId = repository.list({ source: 'qbitai' }).topics[0]!.id
+      const translator = new TopicTranslator(repository, vi.fn())
+      expect(() => translator.translate({ topicId })).toThrow('只有英文标题可以翻译')
     } finally {
       database.close()
     }

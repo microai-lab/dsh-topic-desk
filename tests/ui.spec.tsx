@@ -47,6 +47,7 @@ describe('Topic Desk 页面', () => {
         topicDesk: {
           list: vi.fn(),
           refresh: vi.fn(),
+          translate: vi.fn(),
         },
       },
       locale: {
@@ -79,7 +80,7 @@ describe('Topic Desk 页面', () => {
   it('读取榜单、保留筛选、刷新后重查，并只以安全外链交付原文', async () => {
     const list = vi.fn(async (_query: TopicQuery) => page)
     const refresh = vi.fn(async () => ({ accepted: true, message: '刷新完成' }))
-    render(<TopicDeskPanel list={list} refresh={refresh} t={t} />)
+    render(<TopicDeskPanel list={list} refresh={refresh} translate={async request => ({ ...request, translation: '译文' })} t={t} />)
 
     expect(screen.getByRole('heading', { name: '选题台' })).not.toBeNull()
     const title = await screen.findByText('用于创作的话题')
@@ -106,6 +107,7 @@ describe('Topic Desk 页面', () => {
     render(<TopicDeskPanel
       list={async () => ({ ...page, historyEnabled: false, topics: [{ ...page.topics[0]!, trend: [], rankDelta: null }] })}
       refresh={async () => ({ accepted: true, message: '刷新完成' })}
+      translate={async request => ({ ...request, translation: '译文' })}
       t={t}
     />)
     await screen.findByText('用于创作的话题')
@@ -115,11 +117,53 @@ describe('Topic Desk 页面', () => {
 
   it('每页只请求 20 条并可翻页', async () => {
     const list = vi.fn(async () => ({ ...page, total: 41 }))
-    render(<TopicDeskPanel list={list} refresh={async () => ({ accepted: true, message: '刷新完成' })} t={t} />)
+    render(<TopicDeskPanel list={list} refresh={async () => ({ accepted: true, message: '刷新完成' })} translate={async request => ({ ...request, translation: '译文' })} t={t} />)
     await screen.findByText('用于创作的话题')
     expect(screen.getByText('第 1 / 3')).not.toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '下一页' }))
     await waitFor(() => expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ limit: 20, offset: 20 })))
     expect(screen.getByText('第 2 / 3')).not.toBeNull()
+  })
+
+  it('只为英文标题提供按需翻译，并将译文换行展示', async () => {
+    let resolveTranslation!: (value: { topicId: number; translation: string }) => void
+    const translate = vi.fn(() => new Promise<{ topicId: number; translation: string }>(resolve => {
+      resolveTranslation = resolve
+    }))
+    const english = { ...page.topics[0]!, id: 2, platformCode: 'hacker-news', platformName: 'Hacker News', title: 'A practical guide to small language models' }
+    render(<TopicDeskPanel
+      list={async () => ({ ...page, total: 2, topics: [page.topics[0]!, english] })}
+      refresh={async () => ({ accepted: true, message: '刷新完成' })}
+      translate={translate}
+      t={t}
+    />)
+    await screen.findByText(english.title)
+    expect(screen.queryByRole('button', { name: `译：${page.topics[0]!.title}` })).toBeNull()
+    const button = screen.getByRole('button', { name: `译：${english.title}` })
+    fireEvent.click(button)
+    expect(translate).toHaveBeenCalledWith({ topicId: 2 })
+    expect(screen.getByRole('button', { name: `译：${english.title}` }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByText(/翻译中…/)).not.toBeNull()
+    resolveTranslation({ topicId: 2, translation: '小型语言模型实用指南' })
+    const translation = await screen.findByText(/小型语言模型实用指南/)
+    expect(translation.tagName).toBe('SPAN')
+    expect(translation.getAttribute('lang')).toBe('zh-CN')
+    expect(screen.getByRole('button', { name: `译：${english.title}` }).hasAttribute('disabled')).toBe(true)
+  })
+
+  it('翻译失败后显示轻量重试入口', async () => {
+    const english = { ...page.topics[0]!, id: 2, title: 'An English title' }
+    const translate = vi.fn().mockRejectedValueOnce(new Error('model unavailable')).mockResolvedValueOnce({ topicId: 2, translation: '英文标题' })
+    render(<TopicDeskPanel
+      list={async () => ({ ...page, topics: [english] })}
+      refresh={async () => ({ accepted: true, message: '刷新完成' })}
+      translate={translate}
+      t={t}
+    />)
+    fireEvent.click(await screen.findByRole('button', { name: `译：${english.title}` }))
+    await screen.findByText(/model unavailable/)
+    fireEvent.click(screen.getByRole('button', { name: `译：${english.title}` }))
+    expect(await screen.findByText(/英文标题/)).not.toBeNull()
+    expect(translate).toHaveBeenCalledTimes(2)
   })
 })
