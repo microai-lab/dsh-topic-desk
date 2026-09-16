@@ -277,11 +277,16 @@ describe('SQLite 仓储', () => {
         topics: [topicFixture({ platformCode: 'hacker-news', stableId: 'international-rank-1', rank: 1 })], fetchedCount: 1, invalidCount: 0,
       })
 
-      expect(repository.list().topics.map(topic => ({ platform: topic.platformCode, global: topic.globalRank, platformRank: topic.rank }))).toEqual([
+      const all = repository.list().topics
+      expect(all.map(topic => ({ platform: topic.platformCode, global: topic.globalRank, platformRank: topic.rank }))).toEqual([
         { platform: 'hacker-news', global: 1, platformRank: 1 },
         { platform: 'qbitai', global: 2, platformRank: 2 },
       ])
       expect(repository.list({ source: 'qbitai' }).topics[0]).toMatchObject({ globalRank: 1, rank: 2 })
+      expect(repository.list({ topicIds: [all[1]!.id] }).topics).toEqual([
+        expect.objectContaining({ id: all[1]!.id, platformCode: 'qbitai' }),
+      ])
+      expect(() => repository.list({ topicIds: [0] })).toThrow('topicIds 必须全部为正整数')
     } finally {
       database.close()
     }
@@ -391,11 +396,11 @@ describe('采集协调器', () => {
       const coordinator = new CollectionCoordinator(repository, config, async () => ({
         topics: [topicFixture({ stableId: 'refresh-stats' })], fetchedCount: 1, invalidCount: 0,
       }))
+      const first = await coordinator.refresh()
+      expect(first).toMatchObject({ accepted: true, message: '刷新完成', inserted: 1, updated: 0 })
+      expect(first.insertedTopicIds).toHaveLength(1)
       await expect(coordinator.refresh()).resolves.toEqual({
-        accepted: true, message: '刷新完成', inserted: 1, updated: 0,
-      })
-      await expect(coordinator.refresh()).resolves.toEqual({
-        accepted: true, message: '刷新完成', inserted: 0, updated: 1,
+        accepted: true, message: '刷新完成', inserted: 0, updated: 1, insertedTopicIds: [],
       })
     } finally {
       database.close()

@@ -108,6 +108,8 @@ export interface TopicQuery {
   readonly search?: string
   readonly sort?: 'rank' | 'updated'
   readonly queuedOnly?: boolean
+  /** 仅返回指定话题，用于查看一次手动刷新的新增列表。 */
+  readonly topicIds?: readonly number[]
   readonly limit?: number
   readonly offset?: number
 }
@@ -127,6 +129,7 @@ export interface RefreshResult {
   readonly message: string
   readonly inserted: number
   readonly updated: number
+  readonly insertedTopicIds: readonly number[]
 }
 
 /** 按需翻译请求；Host 会根据 ID 从本地数据库重新读取标题。 */

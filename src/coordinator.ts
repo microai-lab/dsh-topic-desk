@@ -4,7 +4,7 @@ import { TopicRepository } from './repository.ts'
 import type { PlatformCode, PlatformDefinition, RefreshResult, TriggerKind } from './types.ts'
 
 type FeedFetcher = typeof fetchSource
-interface CollectionStats { inserted: number; updated: number }
+interface CollectionStats { inserted: number; updated: number; insertedTopicIds: number[] }
 
 /** 周期采集协调器：同平台单飞、跨平台隔离，且每轮由仓储原子提交。 */
 export class CollectionCoordinator {
@@ -37,7 +37,9 @@ export class CollectionCoordinator {
 
   async refresh(): Promise<RefreshResult> {
     const platforms = this.repository.enabledPlatforms()
-    if (platforms.length === 0) return { accepted: false, message: '没有启用的数据来源', inserted: 0, updated: 0 }
+    if (platforms.length === 0) {
+      return { accepted: false, message: '没有启用的数据来源', inserted: 0, updated: 0, insertedTopicIds: [] }
+    }
     const stats = await this.collectAll('manual')
     return { accepted: true, message: '刷新完成', ...stats }
   }
@@ -45,7 +47,7 @@ export class CollectionCoordinator {
   async collectAll(trigger: TriggerKind): Promise<CollectionStats> {
     const platforms = this.repository.enabledPlatforms()
     const cursor = { value: 0 }
-    const stats: CollectionStats = { inserted: 0, updated: 0 }
+    const stats: CollectionStats = { inserted: 0, updated: 0, insertedTopicIds: [] }
     const workers = Array.from({ length: Math.min(6, platforms.length) }, async () => {
       while (cursor.value < platforms.length) {
         const platform = platforms[cursor.value++]
@@ -53,6 +55,7 @@ export class CollectionCoordinator {
           const result = await this.collectPlatform(platform, trigger)
           stats.inserted += result.inserted
           stats.updated += result.updated
+          stats.insertedTopicIds.push(...result.insertedTopicIds)
         }
       }
     })
@@ -73,7 +76,7 @@ export class CollectionCoordinator {
   private async collectPlatform(platform: PlatformDefinition, trigger: TriggerKind): Promise<CollectionStats> {
     if (this.running.has(platform.code)) {
       this.repository.createRun(platform.code, trigger, 'skipped', '上一轮采集仍在运行')
-      return { inserted: 0, updated: 0 }
+      return { inserted: 0, updated: 0, insertedTopicIds: [] }
     }
     this.running.add(platform.code)
     const runId = this.repository.createRun(platform.code, trigger, 'running')
@@ -90,7 +93,7 @@ export class CollectionCoordinator {
       return this.repository.commitFeed(platform.code, runId, feed)
     } catch (error) {
       this.repository.failRun(runId, error)
-      return { inserted: 0, updated: 0 }
+      return { inserted: 0, updated: 0, insertedTopicIds: [] }
     } finally {
       this.running.delete(platform.code)
     }

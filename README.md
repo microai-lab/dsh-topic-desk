@@ -46,7 +46,7 @@ Sources use public RSS, Atom, JSON, web endpoints, and selected public Orz News 
 - Provides 20-item pagination, source filtering, title search, ranking/update-time sorting, an overall rank across combined sources, per-platform rank when one source is selected, real ranking trends, position changes, and consecutive appearance counts.
 - Collects from at most six sources concurrently to avoid connection spikes.
 - Records overlapping runs for the same source as `skipped`.
-- Reports the number of newly inserted and updated topics after each manual data refresh.
+- Reports the number of newly inserted and updated topics after each manual data refresh; the new-topic count opens a searchable list for that refresh.
 
 ## Using Topic Desk
 

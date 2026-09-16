@@ -8,6 +8,7 @@ import type {
 import styles from './topic-desk.module.css'
 
 const PAGE_SIZE = 20
+type ViewMode = 'discover' | 'queue' | 'new'
 
 export interface TopicDeskActions {
   readonly list: (query: TopicQuery) => Promise<TopicPage>
@@ -58,7 +59,7 @@ function categoryLabel(category: TopicCategory, t: PanelProps['t']): string {
 
 /** Topic Desk 的全局主面板；所有业务数据仅通过 Host Remote 从 SQLite 读取。 */
 export function TopicDeskPanel({ list, refresh, translate, queue, unqueue, t }: PanelProps) {
-  const [view, setView] = useState<'discover' | 'queue'>('discover')
+  const [view, setView] = useState<ViewMode>('discover')
   const [region, setRegion] = useState<'all' | SourceRegion>('all')
   const [category, setCategory] = useState<'all' | TopicCategory>('all')
   const [source, setSource] = useState<PlatformCode | undefined>()
@@ -70,6 +71,7 @@ export function TopicDeskPanel({ list, refresh, translate, queue, unqueue, t }: 
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshResult, setRefreshResult] = useState<RefreshResult>()
+  const [insertedTopicIds, setInsertedTopicIds] = useState<readonly number[]>([])
   const [queuedTotal, setQueuedTotal] = useState(0)
   const [queueing, setQueueing] = useState<Record<number, boolean>>({})
   const [translations, setTranslations] = useState<Record<number, { text?: string; error?: string; loading?: boolean }>>({})
@@ -85,6 +87,7 @@ export function TopicDeskPanel({ list, refresh, translate, queue, unqueue, t }: 
         ...(view === 'discover' && region !== 'all' ? { region } : {}),
         ...(view === 'discover' && category !== 'all' ? { category } : {}),
         ...(view === 'queue' ? { queuedOnly: true } : {}),
+        ...(view === 'new' ? { topicIds: insertedTopicIds } : {}),
         search,
         ...(view === 'discover' ? { sort } : {}),
         limit: PAGE_SIZE,
@@ -100,7 +103,7 @@ export function TopicDeskPanel({ list, refresh, translate, queue, unqueue, t }: 
     } finally {
       if (id === request.current) setLoading(false)
     }
-  }, [category, list, pageIndex, region, search, sort, source, view])
+  }, [category, insertedTopicIds, list, pageIndex, region, search, sort, source, view])
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void load() }, 180)
@@ -114,6 +117,11 @@ export function TopicDeskPanel({ list, refresh, translate, queue, unqueue, t }: 
     try {
       const result = await refresh()
       setRefreshResult(result)
+      setInsertedTopicIds(result.insertedTopicIds)
+      if (view === 'new') {
+        setPageIndex(0)
+        setPage(undefined)
+      }
       await load()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
@@ -133,7 +141,7 @@ export function TopicDeskPanel({ list, refresh, translate, queue, unqueue, t }: 
     }
   }
 
-  const switchView = (next: 'discover' | 'queue'): void => {
+  const switchView = (next: ViewMode): void => {
     if (next === view) return
     setView(next)
     setPageIndex(0)
@@ -186,11 +194,16 @@ export function TopicDeskPanel({ list, refresh, translate, queue, unqueue, t }: 
           </button>
           {refreshResult !== undefined ? (
             <span className={styles.refreshResult} role="status">
-              {refreshResult.accepted
-                ? refreshResult.inserted === 0
-                  ? `${t('refreshNoNew')} · ${t('refreshUpdated')} ${refreshResult.updated} ${t('items')}`
-                  : `${t('refreshAdded')} ${refreshResult.inserted} ${t('items')} · ${t('refreshUpdated')} ${refreshResult.updated} ${t('items')}`
-                : refreshResult.message}
+              {refreshResult.accepted ? (
+                <>
+                  {refreshResult.inserted === 0 ? t('refreshNoNew') : (
+                    <button type="button" onClick={() => { switchView('new') }}>
+                      {t('refreshAdded')} {refreshResult.inserted} {t('items')}
+                    </button>
+                  )}
+                  <span> · {t('refreshUpdated')} {refreshResult.updated} {t('items')}</span>
+                </>
+              ) : refreshResult.message}
             </span>
           ) : null}
         </div>
@@ -206,6 +219,13 @@ export function TopicDeskPanel({ list, refresh, translate, queue, unqueue, t }: 
           <span>{t('creationQueue')}</span>
           <strong>{queuedTotal}</strong>
         </button>
+        {insertedTopicIds.length > 0 || view === 'new' ? (
+          <button type="button" role="tab" aria-selected={view === 'new'} onClick={() => { switchView('new') }}>
+            <NewIcon />
+            <span>{t('newTopics')}</span>
+            <strong>{insertedTopicIds.length}</strong>
+          </button>
+        ) : null}
       </nav>
 
       {view === 'discover' ? <section className={styles.filters} aria-label={t('filters')}>
@@ -267,7 +287,7 @@ export function TopicDeskPanel({ list, refresh, translate, queue, unqueue, t }: 
           <option value="rank">{t('rankSort')}</option>
           <option value="updated">{t('updatedSort')}</option>
         </select>
-      </section> : (
+      </section> : view === 'queue' ? (
         <section className={styles.queueToolbar} aria-label={t('creationQueue')}>
           <div>
             <strong>{t('queueTitle')}</strong>
@@ -278,10 +298,21 @@ export function TopicDeskPanel({ list, refresh, translate, queue, unqueue, t }: 
             <input value={search} onChange={event => { setSearch(event.target.value); setPageIndex(0) }} placeholder={t('searchQueue')} />
           </label>
         </section>
+      ) : (
+        <section className={styles.queueToolbar} aria-label={t('newTopics')}>
+          <div>
+            <strong>{t('newTopicsTitle')}</strong>
+            <span>{t('newTopicsHint')}</span>
+          </div>
+          <label className={styles.search}>
+            <SearchIcon />
+            <input value={search} onChange={event => { setSearch(event.target.value); setPageIndex(0) }} placeholder={t('searchNewTopics')} />
+          </label>
+        </section>
       )}
 
       <div className={styles.summary}>
-        <span><strong>{page?.total ?? 0}</strong> {view === 'queue' ? t('queueResults') : t('results')}</span>
+        <span><strong>{page?.total ?? 0}</strong> {view === 'queue' ? t('queueResults') : view === 'new' ? t('newTopicResults') : t('results')}</span>
         {view === 'discover' ? <span className={hasIssue ? styles.issue : styles.healthy}>
           {hasIssue ? t('sourceIssue') : t('sourcesHealthy')}
         </span> : null}
@@ -294,8 +325,8 @@ export function TopicDeskPanel({ list, refresh, translate, queue, unqueue, t }: 
       {loading && page === undefined ? <div className={styles.state}>{t('loading')}</div> : null}
       {!loading && page?.topics.length === 0 ? (
         <div className={styles.state}>
-          <strong>{view === 'queue' ? t('queueEmpty') : t('empty')}</strong>
-          <span>{view === 'queue' ? t('queueEmptyHint') : t('emptyHint')}</span>
+          <strong>{view === 'queue' ? t('queueEmpty') : view === 'new' ? t('newTopicsEmpty') : t('empty')}</strong>
+          <span>{view === 'queue' ? t('queueEmptyHint') : view === 'new' ? t('newTopicsEmptyHint') : t('emptyHint')}</span>
         </div>
       ) : null}
       {page !== undefined && page.topics.length > 0 ? (
@@ -395,6 +426,10 @@ function BookmarkIcon({ filled = false }: { readonly filled?: boolean }) {
 
 function DiscoverIcon() {
   return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m10 2 1.7 5.2L17 9l-5.3 1.8L10 16l-1.7-5.2L3 9l5.3-1.8z" /></svg>
+}
+
+function NewIcon() {
+  return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v14M3 10h14" /></svg>
 }
 
 export function TopicDeskIcon({ size, active }: { readonly size: number; readonly active: boolean }) {

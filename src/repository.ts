@@ -104,7 +104,7 @@ export class TopicRepository {
     `).run(timestamp, errorText(error), timestamp, runId)
   }
 
-  commitFeed(code: string, runId: number, feed: ParsedFeed): { inserted: number; updated: number } {
+  commitFeed(code: string, runId: number, feed: ParsedFeed): { inserted: number; updated: number; insertedTopicIds: number[] } {
     const platform = this.platform(code)
     return this.database.transaction(() => {
       const run = this.database.handle.prepare(`
@@ -115,6 +115,7 @@ export class TopicRepository {
 
       let inserted = 0
       let updated = 0
+      const insertedTopicIds: number[] = []
       const find = this.database.handle.prepare(`
         SELECT id, source_key, identity_kind FROM topic WHERE platform_id = ? AND dedupe_hash = ?
       `)
@@ -147,6 +148,7 @@ export class TopicRepository {
             runId, timestamp, timestamp,
           )
           topicId = Number(result.lastInsertRowid)
+          insertedTopicIds.push(topicId)
           inserted += 1
         } else {
           if (existing.source_key !== identity.sourceKey || existing.identity_kind !== identity.kind) {
@@ -165,7 +167,7 @@ export class TopicRepository {
       this.database.handle.prepare(
         'UPDATE platform SET last_success_run_id = ?, update_time = ? WHERE id = ?',
       ).run(runId, timestamp, platform.id)
-      return { inserted, updated }
+      return { inserted, updated, insertedTopicIds }
     })
   }
 
@@ -202,6 +204,15 @@ export class TopicRepository {
       const codes = platformCatalog.filter(platform => platformCategory(platform.code) === query.category).map(platform => platform.code)
       where.push(`p.code IN (${codes.map(() => '?').join(', ')})`)
       args.push(...codes)
+    }
+    if (query.topicIds !== undefined) {
+      if (query.topicIds.length > 5_000) throw new RangeError('topicIds 最多允许 5000 项')
+      if (query.topicIds.some(id => !Number.isSafeInteger(id) || id <= 0)) throw new TypeError('topicIds 必须全部为正整数')
+      if (query.topicIds.length === 0) where.push('1 = 0')
+      else {
+        where.push(`t.id IN (${query.topicIds.map(() => '?').join(', ')})`)
+        args.push(...query.topicIds)
+      }
     }
     const search = query.search?.trim()
     if (search !== undefined && search !== '') {

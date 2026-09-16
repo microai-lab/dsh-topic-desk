@@ -94,6 +94,20 @@
   font-variant-numeric: tabular-nums;
 }
 
+.refreshResult button {
+  padding: 0;
+  border: 0;
+  color: var(--topic-blue);
+  background: transparent;
+  font: inherit;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.refreshResult button:hover { color: var(--topic-purple); }
+
 .refresh {
   display: inline-flex;
   align-items: center;
