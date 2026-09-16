@@ -1,7 +1,10 @@
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { isEnglishTitle } from '../types.ts'
-import type { PlatformCode, RefreshResult, SourceRegion, TopicCategory, TopicPage, TopicQuery, TopicView, TranslationRequest, TranslationResult } from '../types.ts'
+import type {
+  CreationQueueRequest, CreationQueueResult, PlatformCode, RefreshResult, SourceRegion, TopicCategory, TopicPage,
+  TopicQuery, TopicView, TranslationRequest, TranslationResult,
+} from '../types.ts'
 import styles from './topic-desk.module.css'
 
 const PAGE_SIZE = 20
@@ -10,6 +13,8 @@ export interface TopicDeskActions {
   readonly list: (query: TopicQuery) => Promise<TopicPage>
   readonly refresh: () => Promise<RefreshResult>
   readonly translate: (request: TranslationRequest) => Promise<TranslationResult>
+  readonly queue: (request: CreationQueueRequest) => Promise<CreationQueueResult>
+  readonly unqueue: (request: CreationQueueRequest) => Promise<CreationQueueResult>
 }
 
 type PanelProps = TopicDeskActions & PropsLocale<'topic-desk'>
@@ -52,7 +57,8 @@ function categoryLabel(category: TopicCategory, t: PanelProps['t']): string {
 }
 
 /** Topic Desk 的全局主面板；所有业务数据仅通过 Host Remote 从 SQLite 读取。 */
-export function TopicDeskPanel({ list, refresh, translate, t }: PanelProps) {
+export function TopicDeskPanel({ list, refresh, translate, queue, unqueue, t }: PanelProps) {
+  const [view, setView] = useState<'discover' | 'queue'>('discover')
   const [region, setRegion] = useState<'all' | SourceRegion>('all')
   const [category, setCategory] = useState<'all' | TopicCategory>('all')
   const [source, setSource] = useState<PlatformCode | undefined>()
@@ -63,6 +69,8 @@ export function TopicDeskPanel({ list, refresh, translate, t }: PanelProps) {
   const [error, setError] = useState<string>()
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [queuedTotal, setQueuedTotal] = useState(0)
+  const [queueing, setQueueing] = useState<Record<number, boolean>>({})
   const [translations, setTranslations] = useState<Record<number, { text?: string; error?: string; loading?: boolean }>>({})
   const request = useRef(0)
 
@@ -72,15 +80,17 @@ export function TopicDeskPanel({ list, refresh, translate, t }: PanelProps) {
     setError(undefined)
     try {
       const next = await list({
-        ...(source === undefined ? {} : { source }),
-        ...(region === 'all' ? {} : { region }),
-        ...(category === 'all' ? {} : { category }),
+        ...(view === 'discover' && source !== undefined ? { source } : {}),
+        ...(view === 'discover' && region !== 'all' ? { region } : {}),
+        ...(view === 'discover' && category !== 'all' ? { category } : {}),
+        ...(view === 'queue' ? { queuedOnly: true } : {}),
         search,
-        sort,
+        ...(view === 'discover' ? { sort } : {}),
         limit: PAGE_SIZE,
         offset: pageIndex * PAGE_SIZE,
       })
       if (id === request.current) {
+        setQueuedTotal(next.queuedTotal)
         if (next.total > 0 && pageIndex * PAGE_SIZE >= next.total) setPageIndex(Math.ceil(next.total / PAGE_SIZE) - 1)
         else setPage(next)
       }
@@ -89,7 +99,7 @@ export function TopicDeskPanel({ list, refresh, translate, t }: PanelProps) {
     } finally {
       if (id === request.current) setLoading(false)
     }
-  }, [category, list, pageIndex, region, search, sort, source])
+  }, [category, list, pageIndex, region, search, sort, source, view])
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void load() }, 180)
@@ -120,6 +130,39 @@ export function TopicDeskPanel({ list, refresh, translate, t }: PanelProps) {
     }
   }
 
+  const switchView = (next: 'discover' | 'queue'): void => {
+    if (next === view) return
+    setView(next)
+    setPageIndex(0)
+    setSearch('')
+    setPage(undefined)
+    setError(undefined)
+  }
+
+  const changeQueue = async (topic: TopicView, queued: boolean): Promise<void> => {
+    setQueueing(current => ({ ...current, [topic.id]: true }))
+    setError(undefined)
+    try {
+      await (queued ? queue : unqueue)({ topicId: topic.id })
+      if (queued) {
+        setQueuedTotal(current => current + 1)
+        setPage(current => current === undefined ? current : {
+          ...current,
+          queuedTotal: current.queuedTotal + 1,
+          topics: current.topics.map(item => item.id === topic.id
+            ? { ...item, queued: true, queuedAt: new Date().toISOString() }
+            : item),
+        })
+      } else {
+        await load()
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+    } finally {
+      setQueueing(current => ({ ...current, [topic.id]: false }))
+    }
+  }
+
   const hasIssue = page?.statuses.some(status => status.enabled && status.status === 'failed') ?? false
   const visibleStatuses = page?.statuses.filter(status =>
     (region === 'all' || status.region === region) && (category === 'all' || status.category === category),
@@ -139,7 +182,19 @@ export function TopicDeskPanel({ list, refresh, translate, t }: PanelProps) {
         </button>
       </header>
 
-      <section className={styles.filters} aria-label={t('filters')}>
+      <nav className={styles.viewTabs} aria-label={t('views')} role="tablist">
+        <button type="button" role="tab" aria-selected={view === 'discover'} onClick={() => { switchView('discover') }}>
+          <DiscoverIcon />
+          <span>{t('discover')}</span>
+        </button>
+        <button type="button" role="tab" aria-selected={view === 'queue'} onClick={() => { switchView('queue') }}>
+          <BookmarkIcon filled={view === 'queue'} />
+          <span>{t('creationQueue')}</span>
+          <strong>{queuedTotal}</strong>
+        </button>
+      </nav>
+
+      {view === 'discover' ? <section className={styles.filters} aria-label={t('filters')}>
         <div className={styles.filterGroup} role="group" aria-label={t('regionFilter')}>
           <span>{t('region')}</span>
           {([
@@ -170,9 +225,9 @@ export function TopicDeskPanel({ list, refresh, translate, t }: PanelProps) {
             }}>{label}</button>
           ))}
         </div>
-      </section>
+      </section> : null}
 
-      <section className={styles.toolbar} aria-label={t('title')}>
+      {view === 'discover' ? <section className={styles.toolbar} aria-label={t('title')}>
         <label className={styles.sourcePicker}>
           <SourceIcon />
           <span>{t('platform')}</span>
@@ -198,13 +253,24 @@ export function TopicDeskPanel({ list, refresh, translate, t }: PanelProps) {
           <option value="rank">{t('rankSort')}</option>
           <option value="updated">{t('updatedSort')}</option>
         </select>
-      </section>
+      </section> : (
+        <section className={styles.queueToolbar} aria-label={t('creationQueue')}>
+          <div>
+            <strong>{t('queueTitle')}</strong>
+            <span>{t('queueHint')}</span>
+          </div>
+          <label className={styles.search}>
+            <SearchIcon />
+            <input value={search} onChange={event => { setSearch(event.target.value); setPageIndex(0) }} placeholder={t('searchQueue')} />
+          </label>
+        </section>
+      )}
 
       <div className={styles.summary}>
-        <span><strong>{page?.total ?? 0}</strong> {t('results')}</span>
-        <span className={hasIssue ? styles.issue : styles.healthy}>
+        <span><strong>{page?.total ?? 0}</strong> {view === 'queue' ? t('queueResults') : t('results')}</span>
+        {view === 'discover' ? <span className={hasIssue ? styles.issue : styles.healthy}>
           {hasIssue ? t('sourceIssue') : t('sourcesHealthy')}
-        </span>
+        </span> : null}
         {page !== undefined && !page.historyEnabled && <span>{t('historyOff')}</span>}
       </div>
 
@@ -213,7 +279,10 @@ export function TopicDeskPanel({ list, refresh, translate, t }: PanelProps) {
       )}
       {loading && page === undefined ? <div className={styles.state}>{t('loading')}</div> : null}
       {!loading && page?.topics.length === 0 ? (
-        <div className={styles.state}><strong>{t('empty')}</strong><span>{t('emptyHint')}</span></div>
+        <div className={styles.state}>
+          <strong>{view === 'queue' ? t('queueEmpty') : t('empty')}</strong>
+          <span>{view === 'queue' ? t('queueEmptyHint') : t('emptyHint')}</span>
+        </div>
       ) : null}
       {page !== undefined && page.topics.length > 0 ? (
         <ol className={styles.list}>
@@ -245,6 +314,7 @@ export function TopicDeskPanel({ list, refresh, translate, t }: PanelProps) {
                   </div>
                 )}
                 <div className={styles.metrics}>
+                  {view === 'queue' && topic.queuedAt !== null ? <span className={styles.queuedDate}>{t('savedAt')} {formatTime(topic.queuedAt)}</span> : null}
                   <span className={topic.rankDelta !== null && topic.rankDelta > 0 ? styles.rising : undefined}>{deltaLabel(topic, t)}</span>
                   <span>{t('runs')} {topic.consecutiveRuns} {t('times')}</span>
                   <span>{t('updated')} {formatTime(topic.updatedAt)}</span>
@@ -254,9 +324,21 @@ export function TopicDeskPanel({ list, refresh, translate, t }: PanelProps) {
                 <RankTrend values={topic.trend} label={`${topic.title} · ${t('trend')}`} />
                 <span>{t('trend')}</span>
               </div>
-              <a className={styles.open} href={topic.url} target="_blank" rel="noopener noreferrer" aria-label={`${t('open')}：${topic.title}`}>
-                <ArrowIcon />
-              </a>
+              <div className={styles.actions}>
+                <button
+                  className={topic.queued ? styles.saved : styles.save}
+                  type="button"
+                  disabled={queueing[topic.id] === true}
+                  aria-label={`${topic.queued ? t('removeFromQueue') : t('addToQueue')}：${topic.title}`}
+                  onClick={() => { void changeQueue(topic, !topic.queued) }}
+                >
+                  <BookmarkIcon filled={topic.queued} />
+                  <span>{topic.queued ? (view === 'queue' ? t('removeFromQueue') : t('queued')) : t('addToQueue')}</span>
+                </button>
+                <a className={styles.open} href={topic.url} target="_blank" rel="noopener noreferrer" aria-label={`${t('open')}：${topic.title}`}>
+                  <ArrowIcon />
+                </a>
+              </div>
             </li>
           })}
         </ol>
@@ -286,6 +368,14 @@ function RefreshIcon() {
 
 function ArrowIcon() {
   return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 13 13 7m-5 0h5v5" /></svg>
+}
+
+function BookmarkIcon({ filled = false }: { readonly filled?: boolean }) {
+  return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3.5h10v13l-5-3-5 3z" fill={filled ? 'currentColor' : 'none'} /></svg>
+}
+
+function DiscoverIcon() {
+  return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m10 2 1.7 5.2L17 9l-5.3 1.8L10 16l-1.7-5.2L3 9l5.3-1.8z" /></svg>
 }
 
 export function TopicDeskIcon({ size, active }: { readonly size: number; readonly active: boolean }) {

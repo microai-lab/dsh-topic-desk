@@ -142,13 +142,13 @@ describe('RSS 与身份', () => {
 })
 
 describe('SQLite 仓储', () => {
-  it('创建四张统一字段业务表，且没有 CHECK 和 FOREIGN KEY 约束', () => {
+  it('创建五张统一字段业务表，且没有 CHECK 和 FOREIGN KEY 约束', () => {
     const database = new TopicDatabase(':memory:', 'delete')
     try {
       const tables = database.handle.prepare(
         "SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
       ).all() as unknown as Array<{ name: string; sql: string }>
-      expect(tables.map(row => row.name)).toEqual(['collection_run', 'platform', 'topic', 'topic_observation'])
+      expect(tables.map(row => row.name)).toEqual(['collection_run', 'creation_queue', 'platform', 'topic', 'topic_observation'])
       for (const table of tables) {
         const columns = database.handle.prepare(`PRAGMA table_info(${table.name})`).all() as unknown as Array<{
           name: string; type: string; notnull: number; dflt_value: string | null; pk: number
@@ -166,16 +166,22 @@ describe('SQLite 仓储', () => {
     }
   })
 
-  it('初始化文件数据库、允许版本 1 重开并拒绝未知版本', () => {
+  it('初始化文件数据库、从版本 1 迁移并拒绝未知版本', () => {
     const directory = mkdtempSync(join(tmpdir(), 'topic-desk-schema-'))
     const path = join(directory, 'nested', 'topics.sqlite')
     try {
       new TopicDatabase(path, 'delete').close()
       new TopicDatabase(path, 'delete').close()
       const raw = new DatabaseSync(path)
-      raw.exec('PRAGMA user_version = 2')
+      raw.exec('DROP TABLE creation_queue; PRAGMA user_version = 1')
       raw.close()
-      expect(() => new TopicDatabase(path, 'delete')).toThrow('不支持的 Topic Desk 数据库版本：2')
+      new TopicDatabase(path, 'delete').close()
+      const migrated = new DatabaseSync(path)
+      expect(migrated.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: 2 })
+      expect(migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'creation_queue'").get()).toMatchObject({ name: 'creation_queue' })
+      migrated.exec('PRAGMA user_version = 3')
+      migrated.close()
+      expect(() => new TopicDatabase(path, 'delete')).toThrow('不支持的 Topic Desk 数据库版本：3')
     } finally {
       rmSync(directory, { recursive: true, force: true })
     }
@@ -252,6 +258,40 @@ describe('SQLite 仓储', () => {
         expect.objectContaining({ code: 'qbitai', region: 'domestic', category: 'technology' }),
         expect.objectContaining({ code: 'hacker-news', region: 'international', category: 'developer' }),
       ]))
+    } finally {
+      database.close()
+    }
+  })
+
+  it('收藏话题并在掉榜后继续保留于待创作列表', () => {
+    const database = new TopicDatabase(':memory:', 'delete')
+    try {
+      const repository = new TopicRepository(database, true)
+      repository.ensurePlatforms(platformDefinitions(Config({})))
+      const firstRun = repository.createRun('qbitai', 'manual', 'running')
+      repository.commitFeed('qbitai', firstRun, {
+        topics: [topicFixture({ stableId: 'saved-topic', title: '值得创作的选题' })], fetchedCount: 1, invalidCount: 0,
+      })
+      const topicId = repository.list({ source: 'qbitai' }).topics[0]!.id
+      expect(repository.list({ source: 'qbitai' })).toMatchObject({ queuedTotal: 0, topics: [{ queued: false, queuedAt: null }] })
+
+      expect(repository.setQueued(topicId, true)).toEqual({ topicId, queued: true })
+      expect(repository.list({ source: 'qbitai' })).toMatchObject({ queuedTotal: 1, topics: [{ queued: true }] })
+
+      const secondRun = repository.createRun('qbitai', 'manual', 'running')
+      repository.commitFeed('qbitai', secondRun, {
+        topics: [topicFixture({ stableId: 'new-topic', title: '新上榜选题' })], fetchedCount: 1, invalidCount: 0,
+      })
+      expect(repository.list({ queuedOnly: true })).toMatchObject({
+        total: 1,
+        queuedTotal: 1,
+        topics: [{ id: topicId, title: '值得创作的选题', queued: true }],
+      })
+
+      expect(repository.setQueued(topicId, false)).toEqual({ topicId, queued: false })
+      expect(repository.list({ queuedOnly: true })).toMatchObject({ total: 0, queuedTotal: 0, topics: [] })
+      expect(() => repository.setQueued(0, true)).toThrow('topicId 必须是正整数')
+      expect(() => repository.setQueued(topicId + 999, true)).toThrow('话题不存在或已失效')
     } finally {
       database.close()
     }

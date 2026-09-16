@@ -80,6 +80,8 @@ export interface TopicView {
   readonly rankDelta: number | null
   readonly consecutiveRuns: number
   readonly trend: number[]
+  readonly queued: boolean
+  readonly queuedAt: string | null
 }
 
 /** 页面展示的平台最近运行状态。 */
@@ -102,6 +104,7 @@ export interface TopicQuery {
   readonly category?: TopicCategory
   readonly search?: string
   readonly sort?: 'rank' | 'updated'
+  readonly queuedOnly?: boolean
   readonly limit?: number
   readonly offset?: number
 }
@@ -112,6 +115,7 @@ export interface TopicPage {
   readonly total: number
   readonly statuses: PlatformStatusView[]
   readonly historyEnabled: boolean
+  readonly queuedTotal: number
 }
 
 /** 手动刷新结果。 */
@@ -129,4 +133,15 @@ export interface TranslationRequest {
 export interface TranslationResult {
   readonly topicId: number
   readonly translation: string
+}
+
+/** 将话题加入或移出待创作列表。 */
+export interface CreationQueueRequest {
+  readonly topicId: number
+}
+
+/** 待创作状态变更结果。 */
+export interface CreationQueueResult {
+  readonly topicId: number
+  readonly queued: boolean
 }

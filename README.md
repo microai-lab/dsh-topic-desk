@@ -40,6 +40,7 @@ Sources use public RSS, Atom, JSON, web endpoints, and selected public Orz News 
 - Stores `heat` when a source provides a reliable popularity value; otherwise stores `NULL`.
 - Opens the original article in a new browser tab when its title or arrow is clicked.
 - Offers on-demand Simplified Chinese translation for English titles through the Harness's currently selected default model.
+- Saves promising topics to a persistent **To create** queue, where they remain available even after leaving the current ranking.
 - Does not fetch article bodies or write content into the chat composer.
 - Supports All, Domestic, and International regions plus General, Tech & AI, Finance & Markets, and Developer categories.
 - Provides 20-item pagination, source filtering, title search, ranking/update-time sorting, real ranking trends, position changes, and consecutive appearance counts.
@@ -180,12 +181,13 @@ See [`src/config.ts`](./src/config.ts) for the complete Schemastery definition. 
 
 ## Database and deduplication
 
-The schema in [`db/schema.sql`](./db/schema.sql) is copied to `lib/schema.sql` during the build. It defines four business tables:
+The schema in [`db/schema.sql`](./db/schema.sql) is copied to `lib/schema.sql` during the build. It defines five business tables:
 
 - `platform`: configured sources and their health state.
 - `collection_run`: status and counts for each per-source collection run.
 - `topic`: the latest persisted state of each deduplicated topic.
 - `topic_observation`: ranking and popularity observations used for historical trends.
+- `creation_queue`: softly deleted bookmarks that back the persistent To create queue.
 
 Every table contains these common fields:
 

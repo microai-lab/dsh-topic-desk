@@ -4,7 +4,8 @@ import { TopicDatabase } from './database.ts'
 import { identifyTopic } from './identity.ts'
 import { platformCatalog, platformCategory, platformRegion } from './platforms.ts'
 import type {
-  CollectedTopic, ParsedFeed, PlatformDefinition, PlatformStatusView, TopicPage, TopicQuery, TopicView, TriggerKind,
+  CollectedTopic, CreationQueueResult, ParsedFeed, PlatformDefinition, PlatformStatusView, TopicPage, TopicQuery,
+  TopicView, TriggerKind,
 } from './types.ts'
 
 interface PlatformRow { id: number; code: string }
@@ -20,6 +21,8 @@ interface TopicSqlRow {
   heat: number | null
   create_time: string
   update_time: string
+  queued: number
+  queued_at: string | null
 }
 
 function now(): string {
@@ -177,7 +180,13 @@ export class TopicRepository {
   list(query: TopicQuery = {}): TopicPage {
     const limit = Math.min(Math.max(query.limit ?? 30, 1), 100)
     const offset = Math.max(query.offset ?? 0, 0)
-    const where = ['t.deleted = 0', 'p.deleted = 0', 'p.last_success_run_id = t.last_collection_run_id']
+    const queuedOnly = query.queuedOnly === true
+    const queueJoin = queuedOnly
+      ? 'JOIN creation_queue cq ON cq.topic_id = t.id AND cq.deleted = 0'
+      : 'LEFT JOIN creation_queue cq ON cq.topic_id = t.id AND cq.deleted = 0'
+    const where = queuedOnly
+      ? ['t.deleted = 0', 'p.deleted = 0']
+      : ['t.deleted = 0', 'p.deleted = 0', 'p.last_success_run_id = t.last_collection_run_id']
     const args: Array<string | number> = []
     if (query.source !== undefined) {
       where.push('p.code = ?')
@@ -198,25 +207,58 @@ export class TopicRepository {
       where.push("t.title LIKE ? ESCAPE '\\'")
       args.push(`%${search.replace(/[\\%_]/g, '\\$&')}%`)
     }
-    const order = query.sort === 'updated'
+    const order = queuedOnly
+      ? 'cq.create_time DESC, cq.id DESC'
+      : query.sort === 'updated'
       ? 't.update_time DESC, t.id DESC'
       : 't.rank ASC, p.code ASC, t.id ASC'
     const clause = where.join(' AND ')
     const total = this.database.handle.prepare(`
-      SELECT COUNT(*) AS count FROM topic t JOIN platform p ON p.id = t.platform_id WHERE ${clause}
+      SELECT COUNT(*) AS count FROM topic t JOIN platform p ON p.id = t.platform_id ${queueJoin} WHERE ${clause}
     `).get(...args) as { count: number }
     const rows = this.database.handle.prepare(`
       SELECT t.id, p.code AS platform_code, p.display_name AS platform_name, t.title,
-        t.canonical_url, t.published_time, t.rank, t.heat, t.create_time, t.update_time
-      FROM topic t JOIN platform p ON p.id = t.platform_id
+        t.canonical_url, t.published_time, t.rank, t.heat, t.create_time, t.update_time,
+        CASE WHEN cq.id IS NULL THEN 0 ELSE 1 END AS queued, cq.create_time AS queued_at
+      FROM topic t JOIN platform p ON p.id = t.platform_id ${queueJoin}
       WHERE ${clause} ORDER BY ${order} LIMIT ? OFFSET ?
     `).all(...args, limit, offset) as unknown as TopicSqlRow[]
+    const queuedTotal = this.database.handle.prepare(`
+      SELECT COUNT(*) AS count
+      FROM creation_queue cq JOIN topic t ON t.id = cq.topic_id JOIN platform p ON p.id = t.platform_id
+      WHERE cq.deleted = 0 AND t.deleted = 0 AND p.deleted = 0
+    `).get() as { count: number }
     return {
       topics: rows.map(row => this.toView(row)),
       total: total.count,
+      queuedTotal: queuedTotal.count,
       statuses: this.statuses(),
       historyEnabled: this.historyEnabled,
     }
+  }
+
+  /** 幂等地加入或移出待创作列表；收藏不依赖话题是否仍在当前榜单。 */
+  setQueued(topicId: number, queued: boolean): CreationQueueResult {
+    if (!Number.isSafeInteger(topicId) || topicId <= 0) throw new TypeError('topicId 必须是正整数')
+    const topic = this.database.handle.prepare(`
+      SELECT t.id FROM topic t JOIN platform p ON p.id = t.platform_id
+      WHERE t.id = ? AND t.deleted = 0 AND p.deleted = 0
+    `).get(topicId)
+    if (topic === undefined) throw new Error('话题不存在或已失效')
+    const timestamp = now()
+    if (queued) {
+      this.database.handle.prepare(`
+        INSERT INTO creation_queue (topic_id, deleted, create_time, update_time)
+        VALUES (?, 0, ?, ?)
+        ON CONFLICT(topic_id) DO UPDATE SET
+          deleted = 0, create_time = excluded.create_time, update_time = excluded.update_time
+      `).run(topicId, timestamp, timestamp)
+    } else {
+      this.database.handle.prepare(`
+        UPDATE creation_queue SET deleted = 1, update_time = ? WHERE topic_id = ? AND deleted = 0
+      `).run(timestamp, topicId)
+    }
+    return { topicId, queued }
   }
 
   /** 读取仍属于当前成功榜单的一条标题，供 Host 侧按需翻译使用。 */
@@ -252,6 +294,8 @@ export class TopicRepository {
       rankDelta,
       consecutiveRuns: this.consecutiveRuns(row.id, row.platform_code),
       trend,
+      queued: row.queued !== 0,
+      queuedAt: row.queued_at,
     }
   }
 

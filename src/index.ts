@@ -5,7 +5,9 @@ import { platformDefinitions, type Config as TopicDeskConfig } from './config.ts
 import { TopicDatabase } from './database.ts'
 import { TopicRepository } from './repository.ts'
 import { TopicTranslator, translateWithHarness } from './translator.ts'
-import type { RefreshResult, TopicPage, TopicQuery, TranslationRequest, TranslationResult } from './types.ts'
+import type {
+  CreationQueueRequest, CreationQueueResult, RefreshResult, TopicPage, TopicQuery, TranslationRequest, TranslationResult,
+} from './types.ts'
 
 export { Config } from './config.ts'
 export type * from './types.ts'
@@ -55,6 +57,18 @@ export class TopicDeskGateway extends TypertRemoteService {
   @Remote('translate')
   async translate(request: TranslationRequest): Promise<TranslationResult> {
     return await this.translator.translate(request)
+  }
+
+  /** 将一个话题加入待创作列表。 */
+  @Remote('queue')
+  async queue(request: CreationQueueRequest): Promise<CreationQueueResult> {
+    return this.repository.setQueued(request.topicId, true)
+  }
+
+  /** 将一个话题移出待创作列表。 */
+  @Remote('unqueue')
+  async unqueue(request: CreationQueueRequest): Promise<CreationQueueResult> {
+    return this.repository.setQueued(request.topicId, false)
   }
 }
 

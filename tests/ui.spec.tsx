@@ -4,12 +4,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { TopicDeskPanel } from '../src/client/TopicDeskPanel.tsx'
 import { apply as applyClient } from '../src/client/index.ts'
 import { zh } from '../src/client/locales.ts'
-import type { TopicPage, TopicQuery } from '../src/types.ts'
+import type { CreationQueueRequest, TopicPage, TopicQuery } from '../src/types.ts'
 
 afterEach(cleanup)
 
 const page: TopicPage = {
   total: 1,
+  queuedTotal: 0,
   historyEnabled: true,
   statuses: [
     { code: 'qbitai', displayName: '量子位', region: 'domestic', category: 'technology', enabled: true, status: 'succeeded', lastRunAt: '2026-09-12T00:00:00.000Z', error: null, topicCount: 1 },
@@ -31,10 +32,16 @@ const page: TopicPage = {
     rankDelta: 2,
     consecutiveRuns: 2,
     trend: [3, 1],
+    queued: false,
+    queuedAt: null,
   }],
 }
 
 const t = (key: string): string => zh[key as keyof typeof zh] ?? key
+const queueActions = {
+  queue: async (request: CreationQueueRequest) => ({ ...request, queued: true }),
+  unqueue: async (request: CreationQueueRequest) => ({ ...request, queued: false }),
+}
 
 describe('Topic Desk 页面', () => {
   it('以相同 ID 注册侧栏入口和全局主面板，并按生命周期释放', async () => {
@@ -48,6 +55,8 @@ describe('Topic Desk 页面', () => {
           list: vi.fn(),
           refresh: vi.fn(),
           translate: vi.fn(),
+          queue: vi.fn(),
+          unqueue: vi.fn(),
         },
       },
       locale: {
@@ -80,7 +89,7 @@ describe('Topic Desk 页面', () => {
   it('读取榜单、保留筛选、刷新后重查，并只以安全外链交付原文', async () => {
     const list = vi.fn(async (_query: TopicQuery) => page)
     const refresh = vi.fn(async () => ({ accepted: true, message: '刷新完成' }))
-    render(<TopicDeskPanel list={list} refresh={refresh} translate={async request => ({ ...request, translation: '译文' })} t={t} />)
+    render(<TopicDeskPanel list={list} refresh={refresh} translate={async request => ({ ...request, translation: '译文' })} {...queueActions} t={t} />)
 
     expect(screen.getByRole('heading', { name: '选题台' })).not.toBeNull()
     const title = await screen.findByText('用于创作的话题')
@@ -108,6 +117,7 @@ describe('Topic Desk 页面', () => {
       list={async () => ({ ...page, historyEnabled: false, topics: [{ ...page.topics[0]!, trend: [], rankDelta: null }] })}
       refresh={async () => ({ accepted: true, message: '刷新完成' })}
       translate={async request => ({ ...request, translation: '译文' })}
+      {...queueActions}
       t={t}
     />)
     await screen.findByText('用于创作的话题')
@@ -117,7 +127,7 @@ describe('Topic Desk 页面', () => {
 
   it('每页只请求 20 条并可翻页', async () => {
     const list = vi.fn(async () => ({ ...page, total: 41 }))
-    render(<TopicDeskPanel list={list} refresh={async () => ({ accepted: true, message: '刷新完成' })} translate={async request => ({ ...request, translation: '译文' })} t={t} />)
+    render(<TopicDeskPanel list={list} refresh={async () => ({ accepted: true, message: '刷新完成' })} translate={async request => ({ ...request, translation: '译文' })} {...queueActions} t={t} />)
     await screen.findByText('用于创作的话题')
     expect(screen.getByText('第 1 / 3')).not.toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '下一页' }))
@@ -135,6 +145,7 @@ describe('Topic Desk 页面', () => {
       list={async () => ({ ...page, total: 2, topics: [page.topics[0]!, english] })}
       refresh={async () => ({ accepted: true, message: '刷新完成' })}
       translate={translate}
+      {...queueActions}
       t={t}
     />)
     await screen.findByText(english.title)
@@ -158,6 +169,7 @@ describe('Topic Desk 页面', () => {
       list={async () => ({ ...page, topics: [english] })}
       refresh={async () => ({ accepted: true, message: '刷新完成' })}
       translate={translate}
+      {...queueActions}
       t={t}
     />)
     fireEvent.click(await screen.findByRole('button', { name: `译：${english.title}` }))
@@ -165,5 +177,37 @@ describe('Topic Desk 页面', () => {
     fireEvent.click(screen.getByRole('button', { name: `译：${english.title}` }))
     expect(await screen.findByText(/英文标题/)).not.toBeNull()
     expect(translate).toHaveBeenCalledTimes(2)
+  })
+
+  it('加入待创作后可再次点击取消，并通过独立视图管理选题', async () => {
+    const queue = vi.fn(async (request: CreationQueueRequest) => ({ ...request, queued: true }))
+    const unqueue = vi.fn(async (request: CreationQueueRequest) => ({ ...request, queued: false }))
+    const queuedTopic = { ...page.topics[0]!, queued: true, queuedAt: '2026-09-12T01:00:00.000Z' }
+    const list = vi.fn(async (query: TopicQuery) => query.queuedOnly
+      ? { ...page, queuedTotal: 1, topics: [queuedTopic] }
+      : page)
+    render(<TopicDeskPanel
+      list={list}
+      refresh={async () => ({ accepted: true, message: '刷新完成' })}
+      translate={async request => ({ ...request, translation: '译文' })}
+      queue={queue}
+      unqueue={unqueue}
+      t={t}
+    />)
+
+    const add = await screen.findByRole('button', { name: `加入待创作：${page.topics[0]!.title}` })
+    fireEvent.click(add)
+    await waitFor(() => expect(queue).toHaveBeenCalledWith({ topicId: 1 }))
+    const remove = screen.getByRole('button', { name: `移出待创作：${page.topics[0]!.title}` })
+    expect(remove.hasAttribute('disabled')).toBe(false)
+    fireEvent.click(remove)
+    await waitFor(() => expect(unqueue).toHaveBeenCalledWith({ topicId: 1 }))
+    fireEvent.click(await screen.findByRole('button', { name: `加入待创作：${page.topics[0]!.title}` }))
+    await waitFor(() => expect(queue).toHaveBeenCalledTimes(2))
+
+    fireEvent.click(screen.getByRole('tab', { name: /待创作 1/ }))
+    await waitFor(() => expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ queuedOnly: true, limit: 20, offset: 0 })))
+    fireEvent.click(await screen.findByRole('button', { name: `移出待创作：${page.topics[0]!.title}` }))
+    await waitFor(() => expect(unqueue).toHaveBeenCalledWith({ topicId: 1 }))
   })
 })

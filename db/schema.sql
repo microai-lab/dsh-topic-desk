@@ -1,4 +1,4 @@
--- Topic Desk SQLite 结构版本 1。
+-- Topic Desk SQLite 结构版本 2。
 -- 约定：所有业务表都包含统一基础字段；按产品要求不声明检查约束和数据库外键约束。
 -- 表间关联字段由仓储业务逻辑维护，数据库仅为查询性能创建普通索引。
 
@@ -69,6 +69,16 @@ CREATE TABLE topic_observation (
   UNIQUE (collection_run_id, topic_id)             -- 同一运行中的话题观察幂等
 );
 
+-- 待创作表：收藏后的选题独立于当前榜单生命周期保留。
+CREATE TABLE creation_queue (
+  id INTEGER PRIMARY KEY,                         -- 本地自增主键
+  deleted INTEGER NOT NULL DEFAULT 0,             -- 软删除标记
+  create_time TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, -- 最近加入待创作列表的 UTC 时间
+  update_time TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, -- 最近状态变更 UTC 时间
+  topic_id INTEGER NOT NULL,                      -- 关联话题，由仓储业务逻辑维护
+  UNIQUE (topic_id)                               -- 每个话题最多一条待创作记录
+);
+
 -- 加速启用平台扫描。
 CREATE INDEX idx_platform_enabled ON platform (enabled, deleted, code);
 -- 加速平台运行记录与状态查询。
@@ -81,5 +91,7 @@ CREATE INDEX idx_topic_update_time ON topic (update_time DESC, id DESC);
 -- 加速趋势读取和保留期清理。
 CREATE INDEX idx_observation_topic_time ON topic_observation (topic_id, create_time, id);
 CREATE INDEX idx_observation_create_time ON topic_observation (create_time, id);
+-- 加速待创作列表和话题收藏状态查询。
+CREATE INDEX idx_creation_queue_active_time ON creation_queue (deleted, create_time DESC, id DESC);
 
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;

@@ -38,6 +38,16 @@ function registerUi(ctx: ClientContext): void {
       if (!result.ok) throw new Error(result.error.message)
       return result.value
     },
+    async queue(request) {
+      const result = await ctx.remote.topicDesk.queue(request)
+      if (!result.ok) throw new Error(result.error.message)
+      return result.value
+    },
+    async unqueue(request) {
+      const result = await ctx.remote.topicDesk.unqueue(request)
+      if (!result.ok) throw new Error(result.error.message)
+      return result.value
+    },
   }
   ctx.slots.inject('main', () => ctx.slots.register({
     name: 'main', key: PANEL_ID, locale: NS, inject: () => actions,
