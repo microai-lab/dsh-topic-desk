@@ -25,6 +25,7 @@ const page: TopicPage = {
     title: '用于创作的话题',
     url: 'https://www.qbitai.com/example.html',
     publishedTime: null,
+    globalRank: 7,
     rank: 1,
     heat: null,
     firstSeenAt: '2026-09-12T00:00:00.000Z',
@@ -88,11 +89,13 @@ describe('Topic Desk 页面', () => {
 
   it('读取榜单、保留筛选、刷新后重查，并只以安全外链交付原文', async () => {
     const list = vi.fn(async (_query: TopicQuery) => page)
-    const refresh = vi.fn(async () => ({ accepted: true, message: '刷新完成' }))
+    const refresh = vi.fn(async () => ({ accepted: true, message: '刷新完成', inserted: 3, updated: 8 }))
     render(<TopicDeskPanel list={list} refresh={refresh} translate={async request => ({ ...request, translation: '译文' })} {...queueActions} t={t} />)
 
     expect(screen.getByRole('heading', { name: '选题台' })).not.toBeNull()
     const title = await screen.findByText('用于创作的话题')
+    expect(screen.getByText('总排名')).not.toBeNull()
+    expect(screen.getByText('07')).not.toBeNull()
     expect(screen.getByRole('option', { name: 'Hacker News · 30' })).not.toBeNull()
     expect(title.closest('a')?.getAttribute('target')).toBe('_blank')
     expect(title.closest('a')?.getAttribute('rel')).toBe('noopener noreferrer')
@@ -107,15 +110,18 @@ describe('Topic Desk 页面', () => {
 
     fireEvent.change(screen.getByRole('combobox', { name: '筛选平台' }), { target: { value: 'ithome' } })
     await waitFor(() => expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ source: 'ithome' })))
-    fireEvent.click(screen.getByRole('button', { name: '立即采集' }))
+    expect(screen.getByText('平台排名')).not.toBeNull()
+    expect(screen.getByText('01')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '刷新数据' }))
     await waitFor(() => expect(refresh).toHaveBeenCalledOnce())
+    expect(screen.getByRole('status').textContent).toBe('新增 3 条 · 更新 8 条')
     expect(list.mock.calls.at(-1)?.[0]).toMatchObject({ source: 'ithome' })
   })
 
   it('没有历史点时不绘制伪造趋势', async () => {
     render(<TopicDeskPanel
       list={async () => ({ ...page, historyEnabled: false, topics: [{ ...page.topics[0]!, trend: [], rankDelta: null }] })}
-      refresh={async () => ({ accepted: true, message: '刷新完成' })}
+      refresh={async () => ({ accepted: true, message: '刷新完成', inserted: 0, updated: 0 })}
       translate={async request => ({ ...request, translation: '译文' })}
       {...queueActions}
       t={t}
@@ -127,7 +133,7 @@ describe('Topic Desk 页面', () => {
 
   it('每页只请求 20 条并可翻页', async () => {
     const list = vi.fn(async () => ({ ...page, total: 41 }))
-    render(<TopicDeskPanel list={list} refresh={async () => ({ accepted: true, message: '刷新完成' })} translate={async request => ({ ...request, translation: '译文' })} {...queueActions} t={t} />)
+    render(<TopicDeskPanel list={list} refresh={async () => ({ accepted: true, message: '刷新完成', inserted: 0, updated: 0 })} translate={async request => ({ ...request, translation: '译文' })} {...queueActions} t={t} />)
     await screen.findByText('用于创作的话题')
     expect(screen.getByText('第 1 / 3')).not.toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '下一页' }))
@@ -143,7 +149,7 @@ describe('Topic Desk 页面', () => {
     const english = { ...page.topics[0]!, id: 2, platformCode: 'hacker-news', platformName: 'Hacker News', title: 'A practical guide to small language models' }
     render(<TopicDeskPanel
       list={async () => ({ ...page, total: 2, topics: [page.topics[0]!, english] })}
-      refresh={async () => ({ accepted: true, message: '刷新完成' })}
+      refresh={async () => ({ accepted: true, message: '刷新完成', inserted: 0, updated: 0 })}
       translate={translate}
       {...queueActions}
       t={t}
@@ -167,7 +173,7 @@ describe('Topic Desk 页面', () => {
     const translate = vi.fn().mockRejectedValueOnce(new Error('model unavailable')).mockResolvedValueOnce({ topicId: 2, translation: '英文标题' })
     render(<TopicDeskPanel
       list={async () => ({ ...page, topics: [english] })}
-      refresh={async () => ({ accepted: true, message: '刷新完成' })}
+      refresh={async () => ({ accepted: true, message: '刷新完成', inserted: 0, updated: 0 })}
       translate={translate}
       {...queueActions}
       t={t}
@@ -188,7 +194,7 @@ describe('Topic Desk 页面', () => {
       : page)
     render(<TopicDeskPanel
       list={list}
-      refresh={async () => ({ accepted: true, message: '刷新完成' })}
+      refresh={async () => ({ accepted: true, message: '刷新完成', inserted: 0, updated: 0 })}
       translate={async request => ({ ...request, translation: '译文' })}
       queue={queue}
       unqueue={unqueue}

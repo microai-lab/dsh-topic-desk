@@ -4,11 +4,12 @@ import { TopicRepository } from './repository.ts'
 import type { PlatformCode, PlatformDefinition, RefreshResult, TriggerKind } from './types.ts'
 
 type FeedFetcher = typeof fetchSource
+interface CollectionStats { inserted: number; updated: number }
 
 /** 周期采集协调器：同平台单飞、跨平台隔离，且每轮由仓储原子提交。 */
 export class CollectionCoordinator {
   private readonly running = new Set<PlatformCode>()
-  private readonly pending = new Set<Promise<void>>()
+  private readonly pending = new Set<Promise<CollectionStats>>()
   private abortController = new AbortController()
   private timer: ReturnType<typeof setInterval> | undefined
 
@@ -36,22 +37,28 @@ export class CollectionCoordinator {
 
   async refresh(): Promise<RefreshResult> {
     const platforms = this.repository.enabledPlatforms()
-    if (platforms.length === 0) return { accepted: false, message: '没有启用的数据来源' }
-    await this.collectAll('manual')
-    return { accepted: true, message: '刷新完成' }
+    if (platforms.length === 0) return { accepted: false, message: '没有启用的数据来源', inserted: 0, updated: 0 }
+    const stats = await this.collectAll('manual')
+    return { accepted: true, message: '刷新完成', ...stats }
   }
 
-  async collectAll(trigger: TriggerKind): Promise<void> {
+  async collectAll(trigger: TriggerKind): Promise<CollectionStats> {
     const platforms = this.repository.enabledPlatforms()
     const cursor = { value: 0 }
+    const stats: CollectionStats = { inserted: 0, updated: 0 }
     const workers = Array.from({ length: Math.min(6, platforms.length) }, async () => {
       while (cursor.value < platforms.length) {
         const platform = platforms[cursor.value++]
-        if (platform !== undefined) await this.collectPlatform(platform, trigger)
+        if (platform !== undefined) {
+          const result = await this.collectPlatform(platform, trigger)
+          stats.inserted += result.inserted
+          stats.updated += result.updated
+        }
       }
     })
     await Promise.allSettled(workers)
     this.repository.cleanObservations(this.config.historyRetentionDays)
+    return stats
   }
 
   private enqueue(trigger: TriggerKind): void {
@@ -63,10 +70,10 @@ export class CollectionCoordinator {
     )
   }
 
-  private async collectPlatform(platform: PlatformDefinition, trigger: TriggerKind): Promise<void> {
+  private async collectPlatform(platform: PlatformDefinition, trigger: TriggerKind): Promise<CollectionStats> {
     if (this.running.has(platform.code)) {
       this.repository.createRun(platform.code, trigger, 'skipped', '上一轮采集仍在运行')
-      return
+      return { inserted: 0, updated: 0 }
     }
     this.running.add(platform.code)
     const runId = this.repository.createRun(platform.code, trigger, 'running')
@@ -80,9 +87,10 @@ export class CollectionCoordinator {
         this.config.proxyUrl,
         this.abortController.signal,
       )
-      this.repository.commitFeed(platform.code, runId, feed)
+      return this.repository.commitFeed(platform.code, runId, feed)
     } catch (error) {
       this.repository.failRun(runId, error)
+      return { inserted: 0, updated: 0 }
     } finally {
       this.running.delete(platform.code)
     }

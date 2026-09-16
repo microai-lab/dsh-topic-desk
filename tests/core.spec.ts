@@ -263,6 +263,30 @@ describe('SQLite 仓储', () => {
     }
   })
 
+  it('合并平台时返回连续总排名，同时保留各平台原始排名', () => {
+    const database = new TopicDatabase(':memory:', 'delete')
+    try {
+      const repository = new TopicRepository(database, true)
+      repository.ensurePlatforms(platformDefinitions(Config({})))
+      const domesticRun = repository.createRun('qbitai', 'manual', 'running')
+      repository.commitFeed('qbitai', domesticRun, {
+        topics: [topicFixture({ platformCode: 'qbitai', stableId: 'domestic-rank-2', rank: 2 })], fetchedCount: 1, invalidCount: 0,
+      })
+      const internationalRun = repository.createRun('hacker-news', 'manual', 'running')
+      repository.commitFeed('hacker-news', internationalRun, {
+        topics: [topicFixture({ platformCode: 'hacker-news', stableId: 'international-rank-1', rank: 1 })], fetchedCount: 1, invalidCount: 0,
+      })
+
+      expect(repository.list().topics.map(topic => ({ platform: topic.platformCode, global: topic.globalRank, platformRank: topic.rank }))).toEqual([
+        { platform: 'hacker-news', global: 1, platformRank: 1 },
+        { platform: 'qbitai', global: 2, platformRank: 2 },
+      ])
+      expect(repository.list({ source: 'qbitai' }).topics[0]).toMatchObject({ globalRank: 1, rank: 2 })
+    } finally {
+      database.close()
+    }
+  })
+
   it('收藏话题并在掉榜后继续保留于待创作列表', () => {
     const database = new TopicDatabase(':memory:', 'delete')
     try {
@@ -353,6 +377,31 @@ describe('按需翻译', () => {
 })
 
 describe('采集协调器', () => {
+  it('手动刷新返回本轮真实新增与更新数量', async () => {
+    const config = Config({
+      sources: Object.fromEntries(platformCatalog.map(({ code }) => [
+        code,
+        { ...defaultSourceConfigs[code], enabled: code === 'qbitai' },
+      ])),
+    })
+    const database = new TopicDatabase(':memory:', 'delete')
+    try {
+      const repository = new TopicRepository(database, true)
+      repository.ensurePlatforms(platformDefinitions(config))
+      const coordinator = new CollectionCoordinator(repository, config, async () => ({
+        topics: [topicFixture({ stableId: 'refresh-stats' })], fetchedCount: 1, invalidCount: 0,
+      }))
+      await expect(coordinator.refresh()).resolves.toEqual({
+        accepted: true, message: '刷新完成', inserted: 1, updated: 0,
+      })
+      await expect(coordinator.refresh()).resolves.toEqual({
+        accepted: true, message: '刷新完成', inserted: 0, updated: 1,
+      })
+    } finally {
+      database.close()
+    }
+  })
+
   it('隔离平台失败，并提交另一平台的成功结果', async () => {
     const config = Config({})
     const database = new TopicDatabase(':memory:', 'delete')

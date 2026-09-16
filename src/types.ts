@@ -73,6 +73,9 @@ export interface TopicView {
   readonly title: string
   readonly url: string
   readonly publishedTime: string | null
+  /** 当前筛选范围内按平台榜单名次合并后的连续总排名。 */
+  readonly globalRank: number
+  /** 来源平台提供的原始榜单名次。 */
   readonly rank: number
   readonly heat: number | null
   readonly firstSeenAt: string
@@ -122,6 +125,8 @@ export interface TopicPage {
 export interface RefreshResult {
   readonly accepted: boolean
   readonly message: string
+  readonly inserted: number
+  readonly updated: number
 }
 
 /** 按需翻译请求；Host 会根据 ID 从本地数据库重新读取标题。 */

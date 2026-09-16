@@ -43,9 +43,10 @@ Sources use public RSS, Atom, JSON, web endpoints, and selected public Orz News 
 - Saves promising topics to a persistent **To create** queue, where they remain available even after leaving the current ranking.
 - Does not fetch article bodies or write content into the chat composer.
 - Supports All, Domestic, and International regions plus General, Tech & AI, Finance & Markets, and Developer categories.
-- Provides 20-item pagination, source filtering, title search, ranking/update-time sorting, real ranking trends, position changes, and consecutive appearance counts.
+- Provides 20-item pagination, source filtering, title search, ranking/update-time sorting, an overall rank across combined sources, per-platform rank when one source is selected, real ranking trends, position changes, and consecutive appearance counts.
 - Collects from at most six sources concurrently to avoid connection spikes.
 - Records overlapping runs for the same source as `skipped`.
+- Reports the number of newly inserted and updated topics after each manual data refresh.
 
 ## Using Topic Desk
 
@@ -245,7 +246,7 @@ Without a path, the command writes to `./data/topic-desk.sqlite`. Running it twi
 | A category has no data | Check the region filter first. Filters intersect; for example, all current Developer sources are international. |
 | Every international source fails | Check the service configured by `proxyUrl`, or leave it empty to use direct connections only. |
 | One platform reports a failure | Inspect Host logs or the latest `collection_run`, then check its endpoint override and availability. Other platforms continue collecting. |
-| Data is not updating | Click “Collect now,” then inspect the latest `collection_run` and `collectionIntervalMinutes`. |
+| Data is not updating | Click “Refresh data,” then inspect the displayed new/update counts, the latest `collection_run`, and `collectionIntervalMinutes`. |
 | The database file cannot be found | Relative `databasePath` values use the DSH process working directory. An absolute path is also supported. |
 | Build output is stale | Run `nvm use`, then `pnpm typecheck`, `pnpm test`, and `pnpm build`. Do not edit `lib/` directly. |
 
@@ -259,7 +260,7 @@ pnpm pack
 dsh plugin --profile <your-profile> add ./dsh-topic-desk-plugin-0.1.0.tgz
 ```
 
-The package includes `cordis.patch.yml`. Its Host plugin ID is `topic-desk`, and DSH discovers the Client entry through `dsh.client`. After the profile starts, Topic Desk appears in the sidebar. List data always comes from local SQLite; only scheduled collection and “Collect now” access source endpoints.
+The package includes `cordis.patch.yml`. Its Host plugin ID is `topic-desk`, and DSH discovers the Client entry through `dsh.client`. After the profile starts, Topic Desk appears in the sidebar. List data always comes from local SQLite; only scheduled collection and “Refresh data” access source endpoints.
 
 ## Build notes
 

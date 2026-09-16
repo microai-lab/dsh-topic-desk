@@ -43,9 +43,10 @@ Client 不直接访问来源网站或 SQLite，只通过生成的 DSH Remote API
 - 可将感兴趣的话题加入持久化的“待创作”列表，再次点击即可移出；掉出当前榜单后仍会保留。
 - 插件不会抓取文章正文，也不会自动向聊天框写入内容。
 - 平台支持全部、国内、国外分组；话题支持综合、科技与 AI、财经市场、开发者分类。
-- 页面采用每页 20 条的分页，并支持来源筛选、标题搜索、排名/更新时间排序、真实排名趋势、排名升降和连续上榜轮数。
+- 页面采用每页 20 条的分页，并支持来源筛选、标题搜索、排名/更新时间排序；全部平台显示合并后的总排名，单个平台显示其平台排名，同时保留真实排名趋势、排名升降和连续上榜轮数。
 - 最多并发采集 6 个来源，避免瞬时连接过载。
 - 同一来源的重叠采集会记录为 `skipped`。
+- 每次手动刷新后显示本轮真实新增和更新的选题数量。
 
 ## 使用选题台
 
@@ -245,7 +246,7 @@ pnpm demo:collect -- /tmp/topic-desk.sqlite
 | 某个话题分类没有数据 | 先检查地区筛选。筛选条件取交集，例如开发者分类目前只有国外平台。 |
 | 所有国外来源都失败 | 检查 `proxyUrl` 指向的服务，或将它留空以只使用直连。 |
 | 单个平台显示失败 | 查看 Host 日志或该平台最新的 `collection_run`，再检查入口覆盖配置和平台可用性；其他平台仍会正常采集。 |
-| 数据没有及时更新 | 点击“立即采集”，检查最新的 `collection_run` 与 `collectionIntervalMinutes`。 |
+| 数据没有及时更新 | 点击“刷新数据”，查看页面显示的新增/更新数量，并检查最新的 `collection_run` 与 `collectionIntervalMinutes`。 |
 | 找不到数据库文件 | 相对 `databasePath` 以 DSH 进程工作目录为基准；也可以配置绝对路径。 |
 | 构建结果没有更新 | 先执行 `nvm use`，再运行 `pnpm typecheck`、`pnpm test`、`pnpm build`；不要直接修改 `lib/`。 |
 
@@ -259,7 +260,7 @@ pnpm pack
 dsh plugin --profile <你的-profile> add ./dsh-topic-desk-plugin-0.1.0.tgz
 ```
 
-发布包包含 `cordis.patch.yml`，Host 插件 ID 为 `topic-desk`，Client 入口由 `dsh.client` 自动发现。启动 profile 后，侧栏会出现“选题台”。列表数据始终来自本地 SQLite；只有定时采集和“立即刷新”会访问配置的来源入口。
+发布包包含 `cordis.patch.yml`，Host 插件 ID 为 `topic-desk`，Client 入口由 `dsh.client` 自动发现。启动 profile 后，侧栏会出现“选题台”。列表数据始终来自本地 SQLite；只有定时采集和“刷新数据”会访问配置的来源入口。
 
 ## 构建说明
 

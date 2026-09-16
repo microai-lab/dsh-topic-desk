@@ -81,6 +81,19 @@
   cursor: pointer;
 }
 
+.refreshArea {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.refreshResult {
+  color: var(--dsw-alias-label-secondary, #565a61);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 .refresh {
   display: inline-flex;
   align-items: center;
@@ -537,6 +550,7 @@
   .header { display: grid; }
   .header h1 { font-size: 34px; }
   .refresh { width: max-content; }
+  .refreshArea { align-items: flex-start; }
   .filters { display: grid; }
   .viewTabs { width: 100%; box-sizing: border-box; }
   .viewTabs button { flex: 1; justify-content: center; }

@@ -17,6 +17,7 @@ interface TopicSqlRow {
   title: string
   canonical_url: string
   published_time: string | null
+  global_rank: number
   rank: number
   heat: number | null
   create_time: string
@@ -219,6 +220,7 @@ export class TopicRepository {
     const rows = this.database.handle.prepare(`
       SELECT t.id, p.code AS platform_code, p.display_name AS platform_name, t.title,
         t.canonical_url, t.published_time, t.rank, t.heat, t.create_time, t.update_time,
+        ROW_NUMBER() OVER (ORDER BY t.rank ASC, p.code ASC, t.id ASC) AS global_rank,
         CASE WHEN cq.id IS NULL THEN 0 ELSE 1 END AS queued, cq.create_time AS queued_at
       FROM topic t JOIN platform p ON p.id = t.platform_id ${queueJoin}
       WHERE ${clause} ORDER BY ${order} LIMIT ? OFFSET ?
@@ -287,6 +289,7 @@ export class TopicRepository {
       title: row.title,
       url: row.canonical_url,
       publishedTime: row.published_time,
+      globalRank: row.global_rank,
       rank: row.rank,
       heat: row.heat,
       firstSeenAt: row.create_time,

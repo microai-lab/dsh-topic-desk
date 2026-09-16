@@ -69,6 +69,7 @@ export function TopicDeskPanel({ list, refresh, translate, queue, unqueue, t }: 
   const [error, setError] = useState<string>()
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [refreshResult, setRefreshResult] = useState<RefreshResult>()
   const [queuedTotal, setQueuedTotal] = useState(0)
   const [queueing, setQueueing] = useState<Record<number, boolean>>({})
   const [translations, setTranslations] = useState<Record<number, { text?: string; error?: string; loading?: boolean }>>({})
@@ -108,9 +109,11 @@ export function TopicDeskPanel({ list, refresh, translate, queue, unqueue, t }: 
 
   const collect = async (): Promise<void> => {
     setRefreshing(true)
+    setRefreshResult(undefined)
     setError(undefined)
     try {
-      await refresh()
+      const result = await refresh()
+      setRefreshResult(result)
       await load()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
@@ -176,10 +179,21 @@ export function TopicDeskPanel({ list, refresh, translate, queue, unqueue, t }: 
           <h1>{t('title')}</h1>
           <p>{t('subtitle')}</p>
         </div>
-        <button className={styles.refresh} type="button" disabled={refreshing} onClick={() => { void collect() }}>
-          <RefreshIcon />
-          {refreshing ? t('refreshing') : t('refresh')}
-        </button>
+        <div className={styles.refreshArea}>
+          <button className={styles.refresh} type="button" disabled={refreshing} onClick={() => { void collect() }}>
+            <RefreshIcon />
+            {refreshing ? t('refreshing') : t('refresh')}
+          </button>
+          {refreshResult !== undefined ? (
+            <span className={styles.refreshResult} role="status">
+              {refreshResult.accepted
+                ? refreshResult.inserted === 0
+                  ? `${t('refreshNoNew')} · ${t('refreshUpdated')} ${refreshResult.updated} ${t('items')}`
+                  : `${t('refreshAdded')} ${refreshResult.inserted} ${t('items')} · ${t('refreshUpdated')} ${refreshResult.updated} ${t('items')}`
+                : refreshResult.message}
+            </span>
+          ) : null}
+        </div>
       </header>
 
       <nav className={styles.viewTabs} aria-label={t('views')} role="tablist">
@@ -288,8 +302,13 @@ export function TopicDeskPanel({ list, refresh, translate, queue, unqueue, t }: 
         <ol className={styles.list}>
           {page.topics.map(topic => {
             const translation = translations[topic.id]
+            const showGlobalRank = source === undefined
+            const visibleRank = showGlobalRank ? topic.globalRank : topic.rank
             return <li key={`${topic.platformCode}:${topic.id}`} className={styles.card}>
-              <div className={styles.rank}><span>{t('rank')}</span><strong>{String(topic.rank).padStart(2, '0')}</strong></div>
+              <div className={styles.rank}>
+                <span>{showGlobalRank ? t('globalRank') : t('platformRank')}</span>
+                <strong>{String(visibleRank).padStart(2, '0')}</strong>
+              </div>
               <div className={styles.topic}>
                 <div className={styles.topicMeta}>
                   <span data-source={topic.platformCode}>{topic.platformName}</span>
