@@ -15,6 +15,10 @@ Collect 49 public sources, follow real ranking trends, and turn promising topics
 [![Docker Compose](https://img.shields.io/badge/Docker_Compose-ready-2496ed?style=flat-square&logo=docker&logoColor=white)](./docker-compose.yml)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](./LICENSE)
 
+<br><br>
+
+<img src="./docs/assets/topic-desk-hero.png" alt="DSH Topic Desk interface" width="100%">
+
 </div>
 
 > [!NOTE]
