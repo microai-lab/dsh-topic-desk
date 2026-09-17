@@ -26,7 +26,7 @@ Collect 49 public sources, follow real ranking trends, and turn promising topics
 - [Quick start](#quick-start)
 - [Docker Compose](#docker-compose)
 - [Built-in sources](#built-in-sources)
-- [Architecture](#architecture)
+- [How it works](#how-it-works)
 - [Configuration](#configuration)
 - [Local data and privacy](#local-data-and-privacy)
 - [Troubleshooting](#troubleshooting)
@@ -94,21 +94,11 @@ Changing the region, category, platform, search term, or sort order resets the p
 ## Quick start
 
 ```bash
-nvm install
-nvm use
-pnpm install
-pnpm typecheck
-pnpm test
-pnpm build
+docker compose up --build -d
+docker compose logs app
 ```
 
-Run one live collection against a temporary database:
-
-```bash
-pnpm demo:collect -- /tmp/topic-desk.sqlite
-```
-
-The demo prints source health and a sample of collected topics as JSON. Live collection depends on network conditions and platform anti-automation policies. Unit tests never access the public internet and are deterministic.
+Open the authenticated URL printed in the logs to enter Topic Desk. Topic data, model settings, and Harness runtime state are persisted as described below. Later starts only require `docker compose up -d`.
 
 ## Docker Compose
 
@@ -152,7 +142,7 @@ docker compose down              # stop and remove the container; keep ./data
 
 Do not change the published port binding to `0.0.0.0` without a separately secured deployment boundary: the DSH Web profile exposes agent tools capable of executing code. `docker compose down -v` removes all Harness named volumes, including sessions, attachments, internal state, presets, and workspace files; it never removes the bind-mounted `./data` directory. Use plain `docker compose down` during routine maintenance.
 
-## Architecture
+## How it works
 
 ```text
 Public source endpoints
@@ -168,14 +158,7 @@ Generated Remote API
 Client: query -> filter/sort -> Topic Desk panel
 ```
 
-- `src/index.ts` mounts the Host service and binds database and timer cleanup to the Cordis lifecycle.
-- `src/coordinator.ts` manages startup, scheduled, and manual collection.
-- `src/source-fetcher.ts` normalizes RSS, Atom, JSON, and public web sources into a shared topic format.
-- `src/rss.ts` parses RSS and Atom metadata.
-- `src/identity.ts` creates stable, source-scoped deduplication identities.
-- `src/database.ts` and `src/repository.ts` handle SQLite initialization, transactions, queries, and history cleanup.
-- `src/client/` contains sidebar registration, the panel, localization, and scoped styles.
-- `db/schema.sql` is the single source of truth for the database schema shipped in the package.
+The project follows DeepSeek Harness's Host/Client plugin model. The Host collects, deduplicates, schedules, and persists data in SQLite; the Client only displays and manages topics through the Remote API. Framework internals do not affect routine use or operations.
 
 ## Configuration
 
@@ -211,64 +194,22 @@ See [`src/config.ts`](./src/config.ts) for the complete Schemastery definition. 
 - `.gitignore` excludes `data/` runtime data, SQLite auxiliary files, logs, build output, and local environment files.
 - Ranking observations are retained for 30 days by default. Set `historyRetentionDays` to `0` to disable automatic history cleanup.
 
-## Database and deduplication
+## Business data
 
-The schema in [`db/schema.sql`](./db/schema.sql) is copied to `lib/schema.sql` during the build. It defines five business tables:
+SQLite stores source health, per-run collection results, deduplicated topics, ranking trends, and the writing queue.
 
-- `platform`: configured sources and their health state.
-- `collection_run`: status and counts for each per-source collection run.
-- `topic`: the latest persisted state of each deduplicated topic.
-- `topic_observation`: ranking and popularity observations used for historical trends.
-- `creation_queue`: softly deleted bookmarks that back the persistent To create queue.
+Topics are deduplicated using a platform-stable ID, normalized URL, or title, in that order. Repeated collection keeps the original record while updating its current rank, popularity, and collection state. When history is enabled, ranking observations continue to accumulate for trends, movement, and consecutive-appearance metrics.
 
-Every table contains these common fields:
-
-```sql
-id          INTEGER PRIMARY KEY,
-deleted     INTEGER NOT NULL DEFAULT 0,
-create_time TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-update_time TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
-```
-
-By project convention, the schema does not use `CHECK` or `FOREIGN KEY`. Repository transactions maintain relationships, while configuration, parsing, and persistence boundaries validate enums, ranges, and URLs.
-
-Topic identity uses the following priority:
-
-1. Platform-stable ID
-2. Normalized URL
-3. Normalized title
-
-The SHA-256 digest input is fixed as:
-
-```text
-v1\0<platform_code>\0<identity_kind>\0<normalized_identity>
-```
-
-Rank, popularity, and collection time are not included in the digest. The database stores both the binary digest and an auditable `source_key`. After matching `(platform_id, dedupe_hash)`, the repository compares the source key and identity type again; a mismatch reports a collision instead of overwriting an existing topic.
-
-Duplicate topics keep their original `title`, `canonical_url`, `published_time`, and `create_time`. Only the current rank, popularity, last collection run, deletion state, and update time change. When history is enabled, every successful match adds a `topic_observation` used to calculate real trends, rank changes, and consecutive appearance counts.
-
-## Command reference
+## Development and verification
 
 `.nvmrc` pins Node.js 24.19.0 and `package.json` pins pnpm 11. Run all commands from the repository root after `nvm use`.
 
 | Command | Purpose |
 |---|---|
-| `pnpm typecheck` | Compile strict Host/Client TypeScript contracts and regenerate Typert metadata |
+| `pnpm typecheck` | Check Host and Client TypeScript types |
 | `pnpm test` | Run deterministic Host, repository, parser, and UI tests without public network access |
 | `pnpm build` | Produce Host/Client bundles, declarations, Remote artifacts, source maps, and the packaged schema |
-| `pnpm demo:collect -- <path>` | Run live collection for every enabled source using an explicit SQLite path |
 | `pnpm pack` | Create an installable plugin archive |
-
-## Live collection demo
-
-Run live collection with an explicit database path:
-
-```bash
-pnpm demo:collect -- /tmp/topic-desk.sqlite
-```
-
-Without a path, the command writes to `./data/topic-desk.sqlite`. Running it twice against the same path should keep the total topic count stable, increase `consecutiveRuns` from 1 to 2, and produce two real trend points.
 
 ## Troubleshooting
 
@@ -292,12 +233,6 @@ dsh plugin --profile <your-profile> add ./dsh-topic-desk-plugin-0.1.0.tgz
 ```
 
 The package includes `cordis.patch.yml`. Its Host plugin ID is `topic-desk`, and DSH discovers the Client entry through `dsh.client`. After the profile starts, Topic Desk appears in the sidebar. List data always comes from local SQLite; only scheduled collection and “Refresh data” access source endpoints.
-
-## Build notes
-
-`@deepseek-ai/dsh-typert-generator@0.1.5-rc.1` only discovers protocol metadata from packages inside the workspace scan scope. This repository keeps the real plugin at the root and uses the private, unpublished `packages/_build/typert-protocol` bridge plus a disposable build-time workspace mirror. The bridge forwards to the official rc.2 runtime, while the published package continues to declare `@deepseek-ai/dsh-typert-protocol` as a peer dependency.
-
-The plugin does not depend on a neighboring `deepseek-harness` source checkout.
 
 ## License
 
