@@ -1,6 +1,8 @@
-<div align="center">
-
 # DSH Topic Desk
+
+<img src="./docs/assets/topic-desk-hero.png" alt="DSH Topic Desk interface" width="100%">
+
+<div align="center">
 
 **A local-first trend discovery desk for DeepSeek Harness**
 
@@ -14,10 +16,6 @@ Collect 49 public sources, follow real ranking trends, and turn promising topics
 [![SQLite](https://img.shields.io/badge/SQLite-local--first-003b57?style=flat-square&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 [![Docker Compose](https://img.shields.io/badge/Docker_Compose-ready-2496ed?style=flat-square&logo=docker&logoColor=white)](./docker-compose.yml)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](./LICENSE)
-
-<br><br>
-
-<img src="./docs/assets/topic-desk-hero.png" alt="DSH Topic Desk interface" width="100%">
 
 </div>
 
