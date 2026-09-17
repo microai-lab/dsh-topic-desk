@@ -1,10 +1,35 @@
+<div align="center">
+
 # DSH Topic Desk
 
-[English](./README.md) | 简体中文
+**面向 DeepSeek Harness 的本地优先热点选题台**
 
-面向本机单用户创作者的 DeepSeek Harness 选题插件。Host 定时采集 49 个公开来源的热点元数据，将标准化榜单写入插件专属 SQLite，并在 DSH 侧栏提供独立的“选题台”页面。
+采集 49 个公开来源，追踪真实排名趋势，把值得写的内容沉淀到待创作清单。
 
-Client 不直接访问来源网站或 SQLite，只通过生成的 DSH Remote API 查询持久化数据或触发受控刷新。
+[English](./README.md) · **简体中文**
+
+[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek_Harness-0.1.5--rc.2-4f46e5?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
+[![Node.js](https://img.shields.io/badge/Node.js-24.19.0-339933?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![SQLite](https://img.shields.io/badge/SQLite-local--first-003b57?style=flat-square&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
+[![Docker Compose](https://img.shields.io/badge/Docker_Compose-ready-2496ed?style=flat-square&logo=docker&logoColor=white)](./docker-compose.yml)
+[![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](./LICENSE)
+
+</div>
+
+> [!NOTE]
+> Topic Desk 面向本机单用户场景。Client 不直接访问来源网站或 SQLite，只通过生成的 DSH Remote API 查询持久化数据或触发受控刷新。
+
+## 导航
+
+- [核心能力](#核心能力)
+- [快速开始](#快速开始)
+- [Docker Compose](#docker-compose)
+- [内置来源](#内置来源)
+- [架构](#架构)
+- [配置](#配置)
+- [数据与隐私](#本地数据与隐私)
+- [常见问题](#常见问题)
 
 ## 项目概览
 
@@ -15,8 +40,14 @@ Client 不直接访问来源网站或 SQLite，只通过生成的 DSH Remote API
 | 数据来源 | 49 个公开 Feed 与数据入口 |
 | 数据存储 | 本地 SQLite：`./data/topic-desk.sqlite` |
 | 采集时机 | 启动时、每 10 分钟或手动触发 |
-| 页面能力 | 国内外/话题分类、来源筛选、搜索、排序、每页 20 条和排名历史 |
+| 页面能力 | 多维筛选、总排名、趋势、刷新统计、本次新增与待创作清单 |
 | 运行环境 | NVM 管理的 Node.js 24.19.0；pnpm 11 |
+
+## 核心能力
+
+| 🔥 热点发现 | 📈 排名追踪 | ✍️ 创作工作流 | 🔒 本地优先 |
+|---|---|---|---|
+| 聚合 49 个国内外公开来源，按地区、类别和平台筛选 | 全平台展示总排名，单平台保留原始排名与真实趋势 | 查看本次新增，一键加入或移出持久化待创作清单 | 话题、配置与凭据留在本机，Client 通过 Remote API 访问 |
 
 ## 内置来源
 

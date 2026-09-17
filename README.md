@@ -1,10 +1,35 @@
+<div align="center">
+
 # DSH Topic Desk
 
-English | [简体中文](./README.zh-CN.md)
+**A local-first trend discovery desk for DeepSeek Harness**
 
-A local-first topic discovery plugin for single-user creators running DeepSeek Harness. The Host periodically collects trending metadata from 49 public sources, writes normalized rankings to a plugin-owned SQLite database, and exposes a dedicated Topic Desk page in the DSH sidebar.
+Collect 49 public sources, follow real ranking trends, and turn promising topics into a focused writing queue.
 
-The Client never accesses source websites or SQLite directly. It only uses the generated DSH Remote API to query persisted data or trigger a controlled refresh.
+**English** · [简体中文](./README.zh-CN.md)
+
+[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek_Harness-0.1.5--rc.2-4f46e5?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
+[![Node.js](https://img.shields.io/badge/Node.js-24.19.0-339933?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![SQLite](https://img.shields.io/badge/SQLite-local--first-003b57?style=flat-square&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
+[![Docker Compose](https://img.shields.io/badge/Docker_Compose-ready-2496ed?style=flat-square&logo=docker&logoColor=white)](./docker-compose.yml)
+[![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](./LICENSE)
+
+</div>
+
+> [!NOTE]
+> Topic Desk targets a local, single-user workflow. The Client never accesses source websites or SQLite directly; it only uses the generated DSH Remote API to query persisted data or trigger a controlled refresh.
+
+## Contents
+
+- [Highlights](#highlights)
+- [Quick start](#quick-start)
+- [Docker Compose](#docker-compose)
+- [Built-in sources](#built-in-sources)
+- [Architecture](#architecture)
+- [Configuration](#configuration)
+- [Local data and privacy](#local-data-and-privacy)
+- [Troubleshooting](#troubleshooting)
 
 ## Overview
 
@@ -15,8 +40,14 @@ The Client never accesses source websites or SQLite directly. It only uses the g
 | Sources | 49 public feeds and data endpoints |
 | Storage | Local SQLite at `./data/topic-desk.sqlite` |
 | Collection | On startup, every 10 minutes, or manually |
-| UI | Region/category/source filters, search, sorting, 20 items per page, and ranking history |
+| UI | Multi-dimensional filters, overall ranking, trends, refresh stats, new topics, and a writing queue |
 | Runtime | Node.js 24.19.0 via NVM; pnpm 11 |
+
+## Highlights
+
+| 🔥 Discover trends | 📈 Track rankings | ✍️ Build a writing queue | 🔒 Stay local-first |
+|---|---|---|---|
+| Aggregate 49 domestic and international public sources with region, category, and platform filters | See an overall cross-source rank, original platform rank, and real historical movement | Review topics added by the latest refresh and add or remove them from a persistent writing queue | Keep topics, configuration, and credentials local while the Client communicates through the Remote API |
 
 ## Built-in sources
 
